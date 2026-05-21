@@ -13,9 +13,11 @@ public class UserUpdateRequest {
     private Long id;
 
     @NotBlank(message = "نام نباید خالی باشد.")
+    @Pattern(regexp = "^[آاأإئؤءبپتثجچحخدذرزژسشصضطظعغفقکكيگگلمنوهةیى\\s\\u200C]+$", message = "نام باید فقط با حروف فارسی وارد شود.")
     private String firstName;
 
     @NotBlank(message = "نام خانوادگی نباید خالی باشد.")
+    @Pattern(regexp = "^[آاأإئؤءبپتثجچحخدذرزژسشصضطظعغفقکكيگگلمنوهةیى\\s\\u200C]+$", message = "نام خانوادگی باید فقط با حروف فارسی وارد شود.")
     private String lastName;
 
     @NotBlank(message = "نام کاربری نباید خالی باشد.")

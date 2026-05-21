@@ -15,9 +15,11 @@ public class UserCreateRequest {
     private String username;
 
     @NotBlank(message = "نام نباید خالی باشد.")
+    @Pattern(regexp = "^[آاأإئؤءبپتثجچحخدذرزژسشصضطظعغفقکكيگگلمنوهةیى\\s\\u200C]+$", message = "نام باید فقط با حروف فارسی وارد شود.")
     private String firstName;
 
     @NotBlank(message = "نام خانوادگی نباید خالی باشد.")
+    @Pattern(regexp = "^[آاأإئؤءبپتثجچحخدذرزژسشصضطظعغفقکكيگگلمنوهةیى\\s\\u200C]+$", message = "نام خانوادگی باید فقط با حروف فارسی وارد شود.")
     private String lastName;
 
     @Pattern(regexp = "^$|^\\d{10}$", message = "کد ملی باید دقیقا ۱۰ رقم باشد.")

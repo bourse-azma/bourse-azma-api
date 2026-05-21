@@ -106,6 +106,8 @@ public class UserServiceImpl implements UserService {
 
     private void normalizeRequestForPersistence(UserCreateRequest request) {
         request.setUsername(normalizeUsername(request.getUsername()));
+        request.setFirstName(normalizeRequired(request.getFirstName()));
+        request.setLastName(normalizeRequired(request.getLastName()));
         request.setEmail(normalizeEmail(request.getEmail()));
         request.setNationalCode(normalizeOptional(request.getNationalCode()));
         request.setPhoneNumber(normalizeOptional(request.getPhoneNumber()));
@@ -113,6 +115,8 @@ public class UserServiceImpl implements UserService {
 
     private void normalizeRequestForPersistence(UserUpdateRequest request) {
         request.setUsername(normalizeUsername(request.getUsername()));
+        request.setFirstName(normalizeRequired(request.getFirstName()));
+        request.setLastName(normalizeRequired(request.getLastName()));
         request.setEmail(normalizeEmail(request.getEmail()));
         request.setNationalCode(normalizeOptional(request.getNationalCode()));
         request.setPhoneNumber(normalizeOptional(request.getPhoneNumber()));
@@ -125,6 +129,10 @@ public class UserServiceImpl implements UserService {
     private String normalizeEmail(String value) {
         String normalized = normalizeOptional(value);
         return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeRequired(String value) {
+        return value == null ? null : value.trim();
     }
 
     private String normalizeOptional(String value) {
