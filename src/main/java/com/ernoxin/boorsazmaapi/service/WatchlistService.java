@@ -18,6 +18,4 @@ public interface WatchlistService {
     void delete(Long watchlistId);
 
     WatchlistResponse addSymbol(Long watchlistId, WatchlistSymbolCreateRequest request);
-
-    WatchlistResponse removeSymbol(Long watchlistId, Long symbolId);
 }

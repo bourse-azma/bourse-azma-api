@@ -100,19 +100,6 @@ public class WatchlistServiceImpl implements WatchlistService {
         return toDto(watchlistRepository.save(watchlist));
     }
 
-    @Override
-    @Transactional
-    public WatchlistResponse removeSymbol(Long watchlistId, Long symbolId) {
-        Long userId = SecurityUtils.currentUserId();
-        Watchlist watchlist = findUserWatchlistById(watchlistId, userId);
-
-        WatchlistSymbol symbol = watchlistSymbolRepository.findByIdAndWatchlistId(symbolId, watchlist.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("نماد مورد نظر در دیده بان یافت نشد."));
-
-        watchlist.getSymbols().removeIf(item -> item.getId().equals(symbol.getId()));
-        return toDto(watchlistRepository.save(watchlist));
-    }
-
     private Watchlist findUserWatchlistById(Long watchlistId, Long userId) {
         return watchlistRepository.findByIdAndUserId(watchlistId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("دیده بان مورد نظر یافت نشد."));

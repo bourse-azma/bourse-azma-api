@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.ernoxin</groupId>
     <artifactId>boors-azma-api</artifactId>
-    <version>0.2.1</version>
+    <version>0.2.2</version>
     <name>boors-azma-api</name>
     <description>boors-azma-api</description>
 

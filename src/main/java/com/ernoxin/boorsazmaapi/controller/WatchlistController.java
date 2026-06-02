@@ -57,9 +57,5 @@ public class WatchlistController {
         return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد", watchlistService.addSymbol(watchlistId, request));
     }
 
-    @DeleteMapping("/{watchlistId}/symbols/{symbolId}")
-    public ApiResponse<WatchlistResponse> removeSymbol(@PathVariable Long watchlistId,
-                                                       @PathVariable Long symbolId) {
-        return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد", watchlistService.removeSymbol(watchlistId, symbolId));
-    }
 }
+
