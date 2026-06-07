@@ -16,4 +16,5 @@ public class UserResponse {
     private String phoneNumber;
     private String email;
     private UserRole role;
+    private java.math.BigDecimal balance;
 }

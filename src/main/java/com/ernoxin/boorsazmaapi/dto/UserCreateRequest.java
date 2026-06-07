@@ -1,6 +1,8 @@
 package com.ernoxin.boorsazmaapi.dto;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -38,4 +40,8 @@ public class UserCreateRequest {
             message = "رمز عبور باید حداقل شامل یک حرف و یک عدد باشد."
     )
     private String password;
+
+    @NotNull(message = "موجودی اولیه نباید خالی باشد.")
+    @DecimalMin(value = "0", message = "موجودی اولیه نمی‌تواند منفی باشد.")
+    private java.math.BigDecimal balance;
 }

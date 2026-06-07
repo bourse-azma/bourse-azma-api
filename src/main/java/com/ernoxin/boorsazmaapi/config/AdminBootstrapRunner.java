@@ -2,7 +2,9 @@ package com.ernoxin.boorsazmaapi.config;
 
 import com.ernoxin.boorsazmaapi.model.User;
 import com.ernoxin.boorsazmaapi.model.UserRole;
+import com.ernoxin.boorsazmaapi.model.WalletTransaction;
 import com.ernoxin.boorsazmaapi.repository.UserRepository;
+import com.ernoxin.boorsazmaapi.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,6 +13,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Locale;
 
 @Component
@@ -19,6 +23,7 @@ import java.util.Locale;
 public class AdminBootstrapRunner implements ApplicationRunner {
 
     private final UserRepository userRepository;
+    private final WalletTransactionRepository walletTransactionRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Value("${app.bootstrap.admin.username:}")
@@ -42,12 +47,16 @@ public class AdminBootstrapRunner implements ApplicationRunner {
     @Value("${app.bootstrap.admin.password:}")
     private String password;
 
+    @Value("${app.bootstrap.admin.balance:0}")
+    private BigDecimal balance;
+
     @Override
     public void run(ApplicationArguments args) {
         if (password == null || password.isBlank()) {
             return;
         }
         if (userRepository.existsByRole(UserRole.ADMIN)) {
+            log.info("Admin bootstrap skipped: an admin user already exists.");
             return;
         }
         if (isBlank(username) || isBlank(firstName) || isBlank(lastName)) {
@@ -92,8 +101,19 @@ public class AdminBootstrapRunner implements ApplicationRunner {
         admin.setEmail(toNullIfBlank(email) == null ? null : email.toLowerCase(Locale.ROOT));
         admin.setPassword(passwordEncoder.encode(password));
         admin.setRole(UserRole.ADMIN);
-        userRepository.save(admin);
-        log.info("Admin bootstrap user created: {}", username);
+        BigDecimal initialBalance = balance != null ? balance : BigDecimal.ZERO;
+        admin.setBalance(initialBalance);
+        User savedAdmin = userRepository.save(admin);
+
+        WalletTransaction initialTx = new WalletTransaction();
+        initialTx.setUser(savedAdmin);
+        initialTx.setAmount(initialBalance);
+        initialTx.setBalanceAfter(initialBalance);
+        initialTx.setDescription("موجودی اولیه به مبلغ " + initialBalance.toPlainString() + " ریال هنگام ایجاد حساب مدیر");
+        initialTx.setCreatedAt(Instant.now());
+        walletTransactionRepository.save(initialTx);
+
+        log.info("Admin bootstrap user created: {} (balance: {})", username, initialBalance);
     }
 
     private boolean isBlank(String value) {

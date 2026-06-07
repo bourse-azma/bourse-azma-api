@@ -9,12 +9,17 @@ import com.ernoxin.boorsazmaapi.mapper.UserMapper;
 import com.ernoxin.boorsazmaapi.model.User;
 import com.ernoxin.boorsazmaapi.model.UserRole;
 import com.ernoxin.boorsazmaapi.repository.UserRepository;
+import com.ernoxin.boorsazmaapi.repository.WalletTransactionRepository;
+import com.ernoxin.boorsazmaapi.model.WalletTransaction;
 import com.ernoxin.boorsazmaapi.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 
@@ -23,17 +28,34 @@ import java.util.Locale;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final WalletTransactionRepository walletTransactionRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
     @Override
+    @Transactional
     public UserResponse create(UserCreateRequest request) {
         normalizeRequestForPersistence(request);
         validateUniqueFieldsForCreate(request);
         User user = userMapper.toEntity(request);
         user.setRole(UserRole.USER);
+        
+        BigDecimal initialBalance = request.getBalance() != null ? request.getBalance() : BigDecimal.valueOf(100_000_000L);
+        user.setBalance(initialBalance);
+        
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        return userMapper.toDto(userRepository.save(user));
+        User savedUser = userRepository.save(user);
+
+        // Save initial wallet transaction
+        WalletTransaction initialTx = new WalletTransaction();
+        initialTx.setUser(savedUser);
+        initialTx.setAmount(initialBalance);
+        initialTx.setBalanceAfter(initialBalance);
+        initialTx.setDescription("موجودی اولیه به مبلغ " + initialBalance.toPlainString() + " ریال هنگام ثبت‌نام");
+        initialTx.setCreatedAt(Instant.now());
+        walletTransactionRepository.save(initialTx);
+
+        return userMapper.toDto(savedUser);
     }
 
     @Override

@@ -44,4 +44,7 @@ public class User extends BaseEntity<Long> {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role;
+
+    @Column(nullable = false, columnDefinition = "numeric(38,2) default 0")
+    private java.math.BigDecimal balance = java.math.BigDecimal.ZERO;
 }
