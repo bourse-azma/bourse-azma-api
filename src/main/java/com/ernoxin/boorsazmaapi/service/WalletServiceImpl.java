@@ -80,6 +80,10 @@ public class WalletServiceImpl implements WalletService {
                 throw new IllegalArgumentException("نوع عملیات نامعتبر است: " + type);
         }
 
+        if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("موجودی کیف پول نمی‌تواند منفی شود.");
+        }
+
         user.setBalance(newBalance);
         userRepository.save(user);
 

@@ -39,10 +39,10 @@ public class UserServiceImpl implements UserService {
         validateUniqueFieldsForCreate(request);
         User user = userMapper.toEntity(request);
         user.setRole(UserRole.USER);
-        
+
         BigDecimal initialBalance = request.getBalance() != null ? request.getBalance() : BigDecimal.valueOf(100_000_000L);
         user.setBalance(initialBalance);
-        
+
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         User savedUser = userRepository.save(user);
 

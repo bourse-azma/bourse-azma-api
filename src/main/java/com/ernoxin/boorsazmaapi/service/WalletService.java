@@ -8,5 +8,6 @@ import java.util.List;
 
 public interface WalletService {
     UserResponse adjustBalance(Long userId, WalletAdjustmentRequest request);
+
     List<WalletTransactionResponse> getTransactions(Long userId);
 }

@@ -147,6 +147,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<ErrorResult>> handleIllegalArgument(IllegalArgumentException ex) {
+        ApiResponse<ErrorResult> body = ApiResponse.of(
+                HttpStatus.BAD_REQUEST,
+                VALIDATION_MESSAGE,
+                ErrorResult.validation(Map.of("value", defaultIfBlank(ex.getMessage())))
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<ApiResponse<ErrorResult>> handleInvalidCredentials(InvalidCredentialsException ex) {
         ApiResponse<ErrorResult> body = ApiResponse.of(
