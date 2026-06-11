@@ -52,12 +52,16 @@ public class MarketSearchServiceImpl implements MarketSearchService {
                 .map(row -> new SearchCandidate(
                         row,
                         computeRelevanceScore(row, normalizedQueries, csvCache.symbolHeader(), csvCache.nameHeader()),
+                        computeBestMatchRank(getColumnValue(row, csvCache.symbolHeader()), normalizedQueries),
+                        computeBestMatchRank(getColumnValue(row, csvCache.nameHeader()), normalizedQueries),
                         normalize(getColumnValue(row, csvCache.symbolHeader())),
                         normalize(getColumnValue(row, csvCache.nameHeader()))
                 ))
                 .filter(candidate -> candidate.score() > 0)
                 .sorted(
-                        Comparator.comparingInt(SearchCandidate::score).reversed()
+                        Comparator.comparingInt(SearchCandidate::symbolMatchRank)
+                                .thenComparingInt(SearchCandidate::nameMatchRank)
+                                .thenComparing(Comparator.comparingInt(SearchCandidate::score).reversed())
                                 .thenComparingInt(candidate -> candidate.symbol().isBlank() ? Integer.MAX_VALUE : candidate.symbol().length())
                                 .thenComparingInt(candidate -> candidate.name().isBlank() ? Integer.MAX_VALUE : candidate.name().length())
                                 .thenComparing(SearchCandidate::symbol)
@@ -177,6 +181,25 @@ public class MarketSearchServiceImpl implements MarketSearchService {
             score += scoreMatch(allValues, query, 8, 6, 2);
         }
         return score;
+    }
+
+    private int computeBestMatchRank(String rawValue, List<String> normalizedQueries) {
+        String value = normalize(rawValue);
+        if (value.isBlank()) {
+            return Integer.MAX_VALUE;
+        }
+
+        int rank = Integer.MAX_VALUE;
+        for (String query : normalizedQueries) {
+            if (value.equals(query)) {
+                rank = Math.min(rank, 0);
+            } else if (value.startsWith(query)) {
+                rank = Math.min(rank, 1);
+            } else if (value.contains(query)) {
+                rank = Math.min(rank, 2);
+            }
+        }
+        return rank;
     }
 
     private int scoreMatch(String value,
@@ -309,6 +332,8 @@ public class MarketSearchServiceImpl implements MarketSearchService {
     private record SearchCandidate(
             Map<String, String> row,
             int score,
+            int symbolMatchRank,
+            int nameMatchRank,
             String symbol,
             String name
     ) {
