@@ -10,6 +10,8 @@ import java.util.List;
 public interface PortfolioHoldingRepository extends JpaRepository<PortfolioHolding, Long> {
     List<PortfolioHolding> findAllByUserIdOrderByAcquiredAtDesc(Long userId);
 
+    List<PortfolioHolding> findAllByUserIdAndInstrumentCode(Long userId, String instrumentCode);
+
     long countByUserId(Long userId);
 
     boolean existsByUserIdAndInstrumentCodeAndBuyPriceAndQuantity(Long userId,

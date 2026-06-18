@@ -1,6 +1,11 @@
 package com.ernoxin.boorsazmaapi.dto;
 
 import com.ernoxin.boorsazmaapi.model.OrderSide;
+import com.ernoxin.boorsazmaapi.model.OrderType;
+import com.ernoxin.boorsazmaapi.model.OrderValidity;
+import com.ernoxin.boorsazmaapi.model.PriceType;
+import com.ernoxin.boorsazmaapi.model.TriggerComparator;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -13,8 +18,14 @@ import java.math.BigDecimal;
 @Data
 public class CreateTradingOrderRequest {
 
-    @NotNull(message = "نوع سفارش الزامی است.")
+    @NotNull(message = "سمت سفارش (خرید/فروش) الزامی است.")
     private OrderSide side;
+
+    @NotNull(message = "نوع سفارش (عادی/شرطی) الزامی است.")
+    private OrderType orderType;
+
+    @NotNull(message = "نوع قیمت (دلخواه/بازار) الزامی است.")
+    private PriceType priceType;
 
     @NotBlank(message = "نماد الزامی است.")
     @Size(max = 50, message = "نماد حداکثر 50 کاراکتر است.")
@@ -28,11 +39,34 @@ public class CreateTradingOrderRequest {
     @Positive(message = "تعداد باید بزرگ‌تر از صفر باشد.")
     private Long quantity;
 
-    @NotNull(message = "قیمت سفارش الزامی است.")
-    @DecimalMin(value = "0.01", message = "قیمت سفارش باید بزرگ‌تر از صفر باشد.")
-    private BigDecimal orderPrice;
+    /**
+     * Required only when {@link #priceType} is {@code CUSTOM}; ignored for market orders.
+     */
+    @DecimalMin(value = "0.01", message = "قیمت باید بزرگ‌تر از صفر باشد.")
+    private BigDecimal price;
 
+    /**
+     * Best available market price captured by the client at submission time. Used as the
+     * effective price for market orders and to validate buying power / order value.
+     */
     @NotNull(message = "قیمت لحظه‌ای الزامی است.")
     @DecimalMin(value = "0.01", message = "قیمت لحظه‌ای باید بزرگ‌تر از صفر باشد.")
     private BigDecimal livePrice;
+
+    @NotNull(message = "اعتبار سفارش الزامی است.")
+    private OrderValidity validityType;
+
+    @Valid
+    private TriggerRequest trigger;
+
+    @Data
+    public static class TriggerRequest {
+
+        @NotNull(message = "شرط قیمت الزامی است.")
+        private TriggerComparator comparator;
+
+        @NotNull(message = "قیمت شرط الزامی است.")
+        @DecimalMin(value = "0.01", message = "قیمت شرط باید بزرگ‌تر از صفر باشد.")
+        private BigDecimal price;
+    }
 }

@@ -2,6 +2,9 @@ package com.ernoxin.boorsazmaapi.model;
 
 public enum OrderStatus {
     REQUESTED,
+    PARTIALLY_FILLED,
     COMPLETED,
-    FAILED
+    CANCELLED,
+    FAILED,
+    TRIGGER_PENDING
 }

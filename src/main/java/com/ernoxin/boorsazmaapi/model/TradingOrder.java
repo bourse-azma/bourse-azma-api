@@ -37,16 +37,60 @@ public class TradingOrder extends BaseEntity<Long> {
     @Column(nullable = false)
     private Long quantity;
 
+    @Column(nullable = false)
+    private Long remainingQuantity;
+
+    @Column(nullable = false)
+    private Long executedQuantity;
+
     @Column(nullable = false, precision = 38, scale = 2)
     private BigDecimal orderPrice;
 
     @Column(nullable = false, precision = 38, scale = 2)
     private BigDecimal livePrice;
 
+    @Column(precision = 38, scale = 2)
+    private BigDecimal averageExecutedPrice;
+
     @Column(nullable = false)
     private Instant orderTime;
 
+    @Column
+    private Instant cancelledAt;
+
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
+    @Column(nullable = false, length = 20)
     private OrderStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private OrderType orderType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 12)
+    private PriceType priceType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 12)
+    private OrderValidity validity;
+
+    @Column
+    private Instant expiresAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private TriggerComparator triggerComparator;
+
+    @Column(precision = 38, scale = 2)
+    private BigDecimal triggerPrice;
+
+    public boolean isCancellable() {
+        return status == OrderStatus.REQUESTED
+                || status == OrderStatus.PARTIALLY_FILLED
+                || status == OrderStatus.TRIGGER_PENDING;
+    }
+
+    public boolean isActive() {
+        return status == OrderStatus.REQUESTED || status == OrderStatus.PARTIALLY_FILLED;
+    }
 }
