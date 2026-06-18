@@ -23,7 +23,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private final TradingOrderRepository tradingOrderRepository;
     private final PortfolioHoldingRepository portfolioHoldingRepository;
     private final UserRepository userRepository;
-    private final TsetmcPriceService tsetmcPriceService;
 
     @Override
     @Transactional(readOnly = true)
@@ -50,7 +49,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     }
 
     private TradingOrderResponse toOrderResponse(TradingOrder order) {
-        BigDecimal livePrice = resolveLivePrice(order.getInstrumentCode(), order.getLivePrice());
         return new TradingOrderResponse(
                 order.getId(),
                 order.getSide(),
@@ -59,7 +57,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
                 order.getInstrumentCode(),
                 order.getQuantity(),
                 order.getOrderPrice(),
-                livePrice,
+                order.getLivePrice(),
                 order.getOrderTime(),
                 order.getStatus(),
                 statusLabel(order.getStatus())
@@ -67,8 +65,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     }
 
     private PortfolioHoldingResponse toPortfolioResponse(PortfolioHolding holding) {
-        BigDecimal livePrice = resolveLivePrice(holding.getInstrumentCode(), holding.getLivePrice());
-        BigDecimal netValue = livePrice.multiply(BigDecimal.valueOf(holding.getQuantity()));
+        BigDecimal netValue = holding.getLivePrice().multiply(BigDecimal.valueOf(holding.getQuantity()));
         return new PortfolioHoldingResponse(
                 holding.getId(),
                 holding.getAcquiredAt(),
@@ -76,13 +73,9 @@ public class TradingAccountServiceImpl implements TradingAccountService {
                 holding.getInstrumentCode(),
                 holding.getQuantity(),
                 holding.getBuyPrice(),
-                livePrice,
+                holding.getLivePrice(),
                 netValue
         );
-    }
-
-    private BigDecimal resolveLivePrice(String instrumentCode, BigDecimal fallback) {
-        return tsetmcPriceService.getLivePrice(instrumentCode).orElse(fallback);
     }
 
     private String sideLabel(OrderSide side) {
