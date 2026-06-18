@@ -1,5 +1,8 @@
 package com.ernoxin.boorsazmaapi.service;
 
+import com.ernoxin.boorsazmaapi.dto.IndustrySummaryResponse;
+import com.ernoxin.boorsazmaapi.dto.IndustrySymbolResponse;
+import com.ernoxin.boorsazmaapi.dto.IndustrySymbolsResult;
 import com.ernoxin.boorsazmaapi.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +36,8 @@ public class MarketSearchServiceImpl implements MarketSearchService {
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
     private static final String SYMBOL_COLUMN = "symbol";
     private static final String NAME_COLUMN = "name";
+    private static final String INDUSTRY_COLUMN = "industry";
+    private static final String INSTRUMENT_CODE_COLUMN = "instrumentCode";
     private static final String OLD_INSCODES_COLUMN = "old_inscodes";
 
     @Value("${app.market-search.csv-path}")
@@ -71,6 +76,66 @@ public class MarketSearchServiceImpl implements MarketSearchService {
                 .toList();
     }
 
+    @Override
+    public List<IndustrySummaryResponse> getIndustries() {
+        CsvCache csvCache = getCsvCache();
+        String industryHeader = csvCache.industryHeader();
+        if (industryHeader == null) {
+            return List.of();
+        }
+
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Map<String, String> row : csvCache.rows()) {
+            String industry = getColumnValue(row, industryHeader).trim();
+            if (industry.isBlank()) {
+                continue;
+            }
+            counts.merge(industry, 1, Integer::sum);
+        }
+
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> new IndustrySummaryResponse(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    @Override
+    public IndustrySymbolsResult getIndustrySymbols(String industry) {
+        if (industry == null || industry.isBlank()) {
+            throw new ResourceNotFoundException("صنعت مورد نظر یافت نشد.");
+        }
+
+        String requestedIndustry = industry.trim();
+        CsvCache csvCache = getCsvCache();
+        String industryHeader = csvCache.industryHeader();
+        String symbolHeader = csvCache.symbolHeader();
+        String nameHeader = csvCache.nameHeader();
+        String instrumentCodeHeader = csvCache.instrumentCodeHeader();
+
+        if (industryHeader == null || symbolHeader == null || nameHeader == null) {
+            throw new ResourceNotFoundException("صنعت مورد نظر یافت نشد.");
+        }
+
+        List<IndustrySymbolResponse> symbols = csvCache.rows().stream()
+                .filter(row -> requestedIndustry.equals(getColumnValue(row, industryHeader).trim()))
+                .map(row -> new IndustrySymbolResponse(
+                        getColumnValue(row, symbolHeader).trim(),
+                        getColumnValue(row, nameHeader).trim(),
+                        instrumentCodeHeader == null
+                                ? ""
+                                : getColumnValue(row, instrumentCodeHeader).trim()
+                ))
+                .filter(symbol -> !symbol.symbol().isBlank() && !symbol.name().isBlank())
+                .sorted(Comparator.comparing(IndustrySymbolResponse::symbol).thenComparing(IndustrySymbolResponse::name))
+                .toList();
+
+        if (symbols.isEmpty()) {
+            throw new ResourceNotFoundException("صنعت مورد نظر یافت نشد.");
+        }
+
+        return new IndustrySymbolsResult(requestedIndustry, symbols);
+    }
+
     private CsvCache getCsvCache() {
         Path csvPath = resolveCsvPath();
         try {
@@ -106,12 +171,14 @@ public class MarketSearchServiceImpl implements MarketSearchService {
         try (BufferedReader reader = Files.newBufferedReader(csvPath, StandardCharsets.UTF_8)) {
             String headerLine = reader.readLine();
             if (headerLine == null || headerLine.isBlank()) {
-                return new CsvCache(fileSize, lastModified, null, null, null, List.<Map<String, String>>of());
+                return new CsvCache(fileSize, lastModified, null, null, null, null, null, List.<Map<String, String>>of());
             }
 
             List<String> headers = sanitizeHeaders(parseCsvLine(headerLine));
             String symbolHeader = findHeader(headers, SYMBOL_COLUMN);
             String nameHeader = findHeader(headers, NAME_COLUMN);
+            String industryHeader = findHeader(headers, INDUSTRY_COLUMN);
+            String instrumentCodeHeader = findHeader(headers, INSTRUMENT_CODE_COLUMN);
             String oldInscodesHeader = findHeader(headers, OLD_INSCODES_COLUMN);
 
             List<Map<String, String>> rows = new ArrayList<>();
@@ -132,7 +199,16 @@ public class MarketSearchServiceImpl implements MarketSearchService {
             }
 
             log.info("Market CSV loaded. path={} rows={}", csvPath, rows.size());
-            return new CsvCache(fileSize, lastModified, symbolHeader, nameHeader, oldInscodesHeader, List.copyOf(rows));
+            return new CsvCache(
+                    fileSize,
+                    lastModified,
+                    symbolHeader,
+                    nameHeader,
+                    industryHeader,
+                    instrumentCodeHeader,
+                    oldInscodesHeader,
+                    List.copyOf(rows)
+            );
         }
     }
 
@@ -344,6 +420,8 @@ public class MarketSearchServiceImpl implements MarketSearchService {
             long lastModified,
             String symbolHeader,
             String nameHeader,
+            String industryHeader,
+            String instrumentCodeHeader,
             String oldInscodesHeader,
             List<Map<String, String>> rows
     ) {

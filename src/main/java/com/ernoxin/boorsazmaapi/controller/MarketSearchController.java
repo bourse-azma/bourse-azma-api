@@ -1,5 +1,7 @@
 package com.ernoxin.boorsazmaapi.controller;
 
+import com.ernoxin.boorsazmaapi.dto.IndustrySummaryResponse;
+import com.ernoxin.boorsazmaapi.dto.IndustrySymbolsResult;
 import com.ernoxin.boorsazmaapi.dto.api.ApiResponse;
 import com.ernoxin.boorsazmaapi.service.MarketSearchService;
 import jakarta.validation.constraints.NotBlank;
@@ -27,5 +29,17 @@ public class MarketSearchController {
             @RequestParam("query") @NotBlank(message = "عبارت جستجو نباید خالی باشد.") String query
     ) {
         return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد", marketSearchService.search(query));
+    }
+
+    @GetMapping("/industries")
+    public ApiResponse<List<IndustrySummaryResponse>> getIndustries() {
+        return ApiResponse.ok(marketSearchService.getIndustries());
+    }
+
+    @GetMapping("/industries/symbols")
+    public ApiResponse<IndustrySymbolsResult> getIndustrySymbols(
+            @RequestParam("industry") @NotBlank(message = "نام صنعت نباید خالی باشد.") String industry
+    ) {
+        return ApiResponse.ok(marketSearchService.getIndustrySymbols(industry));
     }
 }
