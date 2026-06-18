@@ -1,9 +1,9 @@
 package com.ernoxin.boorsazmaapi.controller;
 
-import com.ernoxin.boorsazmaapi.dto.UserCreateRequest;
 import com.ernoxin.boorsazmaapi.dto.api.ApiResponse;
 import com.ernoxin.boorsazmaapi.dto.auth.AuthTokenResponse;
 import com.ernoxin.boorsazmaapi.dto.auth.LoginRequest;
+import com.ernoxin.boorsazmaapi.dto.auth.RegisterRequest;
 import com.ernoxin.boorsazmaapi.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<AuthTokenResponse> register(@Valid @RequestBody UserCreateRequest request) {
+    public ApiResponse<AuthTokenResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ApiResponse.of(HttpStatus.CREATED, "عملیات با موفقیت انجام شد", authService.register(request));
     }
 

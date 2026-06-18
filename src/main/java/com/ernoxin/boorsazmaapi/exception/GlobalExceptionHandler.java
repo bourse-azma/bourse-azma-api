@@ -167,6 +167,29 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
+    @ExceptionHandler(InvalidCurrentPasswordException.class)
+    public ResponseEntity<ApiResponse<ErrorResult>> handleInvalidCurrentPassword(InvalidCurrentPasswordException ex) {
+        Map<String, String> errors = Map.of("currentPassword", defaultIfBlank(ex.getMessage()));
+        ApiResponse<ErrorResult> body = ApiResponse.of(
+                HttpStatus.BAD_REQUEST,
+                VALIDATION_MESSAGE,
+                ErrorResult.validation(errors)
+        );
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(LoginBruteForceBlockedException.class)
+    public ResponseEntity<ApiResponse<ErrorResult>> handleLoginBruteForceBlocked(LoginBruteForceBlockedException ex) {
+        ApiResponse<ErrorResult> body = ApiResponse.of(
+                HttpStatus.TOO_MANY_REQUESTS,
+                "تلاش‌های ورود بیش از حد مجاز",
+                ErrorResult.tooManyRequests(ex.getMessage())
+        );
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(body);
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiResponse<ErrorResult>> handleAccessDenied(AccessDeniedException ex) {
         ApiResponse<ErrorResult> body = ApiResponse.of(

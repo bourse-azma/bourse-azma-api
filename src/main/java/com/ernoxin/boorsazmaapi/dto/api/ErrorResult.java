@@ -27,6 +27,10 @@ public record ErrorResult(
         return new ErrorResult("دسترسی", detail, null);
     }
 
+    public static ErrorResult tooManyRequests(String detail) {
+        return new ErrorResult("محدودیت درخواست", detail, null);
+    }
+
     public static ErrorResult internal(String detail) {
         return new ErrorResult("داخلی", detail, null);
     }

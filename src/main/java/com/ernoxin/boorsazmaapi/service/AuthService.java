@@ -1,11 +1,11 @@
 package com.ernoxin.boorsazmaapi.service;
 
-import com.ernoxin.boorsazmaapi.dto.UserCreateRequest;
 import com.ernoxin.boorsazmaapi.dto.auth.AuthTokenResponse;
 import com.ernoxin.boorsazmaapi.dto.auth.LoginRequest;
+import com.ernoxin.boorsazmaapi.dto.auth.RegisterRequest;
 
 public interface AuthService {
-    AuthTokenResponse register(UserCreateRequest request);
+    AuthTokenResponse register(RegisterRequest request);
 
     AuthTokenResponse login(LoginRequest request);
 

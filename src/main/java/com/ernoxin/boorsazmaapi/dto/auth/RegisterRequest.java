@@ -1,16 +1,18 @@
-package com.ernoxin.boorsazmaapi.dto;
+package com.ernoxin.boorsazmaapi.dto.auth;
 
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
 @Setter
 @Getter
-public class UserUpdateRequest {
+public class RegisterRequest {
 
-    @NotNull(message = "شناسه کاربر نباید خالی باشد.")
-    @Positive(message = "شناسه کاربر باید عددی مثبت باشد.")
-    private Long id;
+    @NotBlank(message = "نام کاربری نباید خالی باشد.")
+    @Pattern(regexp = "^[A-Za-z0-9._-]{3,50}$", message = "نام کاربری باید ۳ تا ۵۰ کاراکتر و شامل حروف انگلیسی، عدد یا . _ - باشد.")
+    private String username;
 
     @NotBlank(message = "نام نباید خالی باشد.")
     @Pattern(regexp = "^[آاأإئؤءبپتثجچحخدذرزژسشصضطظعغفقکكيگگلمنوهةیى\\s\\u200C]+$", message = "نام باید فقط با حروف فارسی وارد شود.")
@@ -19,10 +21,6 @@ public class UserUpdateRequest {
     @NotBlank(message = "نام خانوادگی نباید خالی باشد.")
     @Pattern(regexp = "^[آاأإئؤءبپتثجچحخدذرزژسشصضطظعغفقکكيگگلمنوهةیى\\s\\u200C]+$", message = "نام خانوادگی باید فقط با حروف فارسی وارد شود.")
     private String lastName;
-
-    @NotBlank(message = "نام کاربری نباید خالی باشد.")
-    @Pattern(regexp = "^[A-Za-z0-9._-]{3,50}$", message = "نام کاربری باید ۳ تا ۵۰ کاراکتر و شامل حروف انگلیسی، عدد یا . _ - باشد.")
-    private String username;
 
     @Pattern(regexp = "^$|^\\d{10}$", message = "کد ملی باید دقیقا ۱۰ رقم باشد.")
     private String nationalCode;
@@ -33,12 +31,11 @@ public class UserUpdateRequest {
     @Pattern(regexp = "^$|^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", message = "ایمیل واردشده معتبر نیست.")
     private String email;
 
+    @NotBlank(message = "رمز عبور نباید خالی باشد.")
     @Size(min = 8, max = 24, message = "رمز عبور باید بین ۸ تا ۲۴ کاراکتر باشد.")
     @Pattern(
             regexp = "^(?=.*[A-Za-z])(?=.*\\d).+$",
             message = "رمز عبور باید حداقل شامل یک حرف و یک عدد باشد."
     )
     private String password;
-
-    private String currentPassword;
 }

@@ -3,7 +3,9 @@ package com.ernoxin.boorsazmaapi.service;
 import com.ernoxin.boorsazmaapi.dto.UserCreateRequest;
 import com.ernoxin.boorsazmaapi.dto.UserResponse;
 import com.ernoxin.boorsazmaapi.dto.UserUpdateRequest;
+import com.ernoxin.boorsazmaapi.dto.auth.RegisterRequest;
 import com.ernoxin.boorsazmaapi.exception.DuplicateResourceException;
+import com.ernoxin.boorsazmaapi.exception.InvalidCurrentPasswordException;
 import com.ernoxin.boorsazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.boorsazmaapi.mapper.UserMapper;
 import com.ernoxin.boorsazmaapi.model.User;
@@ -27,10 +29,27 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
+    private static final BigDecimal DEFAULT_REGISTRATION_BALANCE = BigDecimal.valueOf(100_000_000L);
+
     private final UserRepository userRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+
+    @Override
+    @Transactional
+    public UserResponse register(RegisterRequest request) {
+        UserCreateRequest createRequest = new UserCreateRequest();
+        createRequest.setUsername(request.getUsername());
+        createRequest.setFirstName(request.getFirstName());
+        createRequest.setLastName(request.getLastName());
+        createRequest.setNationalCode(request.getNationalCode());
+        createRequest.setPhoneNumber(request.getPhoneNumber());
+        createRequest.setEmail(request.getEmail());
+        createRequest.setPassword(request.getPassword());
+        createRequest.setBalance(DEFAULT_REGISTRATION_BALANCE);
+        return create(createRequest);
+    }
 
     @Override
     @Transactional
@@ -77,9 +96,23 @@ public class UserServiceImpl implements UserService {
         validateUniqueFieldsForUpdate(request);
         userMapper.updateEntity(request, user);
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            validatePasswordChange(user, request);
             user.setPassword(passwordEncoder.encode(request.getPassword()));
         }
         return userMapper.toDto(userRepository.save(user));
+    }
+
+    private void validatePasswordChange(User user, UserUpdateRequest request) {
+        if (!SecurityUtils.currentUserId().equals(user.getId())) {
+            return;
+        }
+
+        if (request.getCurrentPassword() == null || request.getCurrentPassword().isBlank()) {
+            throw new InvalidCurrentPasswordException();
+        }
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new InvalidCurrentPasswordException();
+        }
     }
 
     @Override
