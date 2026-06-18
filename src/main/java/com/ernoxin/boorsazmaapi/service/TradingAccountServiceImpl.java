@@ -28,15 +28,19 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class TradingAccountServiceImpl implements TradingAccountService {
 
+    private static final String ORDER_BOOK_PRICE_ERROR =
+            "این سایت در حالت دمو است؛ قیمت سفارش باید در محدوده صف خرید یا فروش باشد و ثبت قیمت خارج از این بازه امکان‌پذیر نیست.";
     private final TradingOrderRepository tradingOrderRepository;
     private final PortfolioHoldingRepository portfolioHoldingRepository;
     private final UserRepository userRepository;
     private final OrderMatchingService orderMatchingService;
+    private final MarketLiquidityService marketLiquidityService;
 
     @Override
     @Transactional(readOnly = true)
@@ -69,6 +73,10 @@ public class TradingAccountServiceImpl implements TradingAccountService {
 
         if (request.getOrderType() == OrderType.CONDITIONAL) {
             validateTrigger(request);
+        }
+
+        if (request.getPriceType() == PriceType.CUSTOM) {
+            validateCustomPriceWithinOrderBook(request.getSide(), request.getInstrumentCode(), effectivePrice);
         }
 
         if (request.getSide() == OrderSide.BUY) {
@@ -180,6 +188,19 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         if (trigger == null || trigger.getComparator() == null
                 || trigger.getPrice() == null || trigger.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("برای سفارش شرطی باید شرط قیمت و قیمت معتبر مشخص شود.");
+        }
+    }
+
+    private void validateCustomPriceWithinOrderBook(OrderSide side, String instrumentCode, BigDecimal price) {
+        Optional<OrderBookPriceRange> range = side == OrderSide.BUY
+                ? marketLiquidityService.getBidPriceRange(instrumentCode.trim())
+                : marketLiquidityService.getAskPriceRange(instrumentCode.trim());
+        if (range.isEmpty()) {
+            return;
+        }
+        OrderBookPriceRange bounds = range.get();
+        if (price.compareTo(bounds.min()) < 0 || price.compareTo(bounds.max()) > 0) {
+            throw new IllegalArgumentException(ORDER_BOOK_PRICE_ERROR);
         }
     }
 

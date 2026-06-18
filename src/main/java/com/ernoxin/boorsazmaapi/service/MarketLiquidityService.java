@@ -30,6 +30,29 @@ public class MarketLiquidityService {
                 .toList();
     }
 
+    public Optional<OrderBookPriceRange> getBidPriceRange(String instrumentCode) {
+        return toPriceRange(getBidLevels(instrumentCode));
+    }
+
+    public Optional<OrderBookPriceRange> getAskPriceRange(String instrumentCode) {
+        return toPriceRange(getAskLevels(instrumentCode));
+    }
+
+    private Optional<OrderBookPriceRange> toPriceRange(List<MarketLiquidityLevel> levels) {
+        if (levels.isEmpty()) {
+            return Optional.empty();
+        }
+        BigDecimal min = levels.stream()
+                .map(MarketLiquidityLevel::price)
+                .min(BigDecimal::compareTo)
+                .orElseThrow();
+        BigDecimal max = levels.stream()
+                .map(MarketLiquidityLevel::price)
+                .max(BigDecimal::compareTo)
+                .orElseThrow();
+        return Optional.of(new OrderBookPriceRange(min, max));
+    }
+
     private List<MarketLiquidityLevel> parseLevels(String instrumentCode, Side side) {
         Optional<JsonNode> payload = tsetmcMarketClient.getBestLimits(instrumentCode);
         if (payload.isEmpty()) {
