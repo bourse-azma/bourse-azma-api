@@ -9,10 +9,10 @@
         <relativePath/>
     </parent>
     <groupId>com.ernoxin</groupId>
-    <artifactId>boors-azma-api</artifactId>
+    <artifactId>bourse-azma-api</artifactId>
     <version>0.2.3</version>
-    <name>boors-azma-api</name>
-    <description>boors-azma-api</description>
+    <name>bourse-azma-api</name>
+    <description>bourse-azma-api</description>
 
     <properties>
         <java.version>21</java.version>
