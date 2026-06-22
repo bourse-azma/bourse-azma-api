@@ -38,6 +38,14 @@ public class MarketLiquidityService {
         return toPriceRange(getAskLevels(instrumentCode));
     }
 
+    public boolean isOrderBookReady(String instrumentCode) {
+        String normalizedCode = instrumentCode == null ? "" : instrumentCode.trim();
+        if (normalizedCode.isEmpty()) {
+            return false;
+        }
+        return getBidPriceRange(normalizedCode).isPresent() && getAskPriceRange(normalizedCode).isPresent();
+    }
+
     private Optional<OrderBookPriceRange> toPriceRange(List<MarketLiquidityLevel> levels) {
         if (levels.isEmpty()) {
             return Optional.empty();

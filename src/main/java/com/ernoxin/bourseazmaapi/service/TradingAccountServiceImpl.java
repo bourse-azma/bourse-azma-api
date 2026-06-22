@@ -23,6 +23,8 @@ public class TradingAccountServiceImpl implements TradingAccountService {
 
     private static final String ORDER_BOOK_PRICE_ERROR =
             "این سایت در حالت دمو است؛ قیمت سفارش باید در محدوده صف خرید یا فروش باشد و ثبت قیمت خارج از این بازه امکان‌پذیر نیست.";
+    private static final String ORDER_BOOK_UNAVAILABLE_ERROR =
+            "اطلاعات صف خرید و فروش در دسترس نیست؛ امکان ثبت سفارش وجود ندارد.";
     private final TradingOrderRepository tradingOrderRepository;
     private final PortfolioHoldingRepository portfolioHoldingRepository;
     private final UserRepository userRepository;
@@ -53,6 +55,9 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("کاربر یافت نشد."));
 
+        String instrumentCode = request.getInstrumentCode().trim();
+        validateOrderBookReady(instrumentCode);
+
         BigDecimal livePrice = scaled(request.getLivePrice());
         BigDecimal effectivePrice = resolveEffectivePrice(request, livePrice);
         long quantity = request.getQuantity();
@@ -63,7 +68,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         }
 
         if (request.getPriceType() == PriceType.CUSTOM) {
-            validateCustomPriceWithinOrderBook(request.getSide(), request.getInstrumentCode(), effectivePrice);
+            validateCustomPriceWithinOrderBook(request.getSide(), instrumentCode, effectivePrice);
         }
 
         if (request.getSide() == OrderSide.BUY) {
@@ -178,14 +183,18 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         }
     }
 
+    private void validateOrderBookReady(String instrumentCode) {
+        if (!marketLiquidityService.isOrderBookReady(instrumentCode)) {
+            throw new IllegalArgumentException(ORDER_BOOK_UNAVAILABLE_ERROR);
+        }
+    }
+
     private void validateCustomPriceWithinOrderBook(OrderSide side, String instrumentCode, BigDecimal price) {
         Optional<OrderBookPriceRange> range = side == OrderSide.BUY
-                ? marketLiquidityService.getBidPriceRange(instrumentCode.trim())
-                : marketLiquidityService.getAskPriceRange(instrumentCode.trim());
-        if (range.isEmpty()) {
-            return;
-        }
-        OrderBookPriceRange bounds = range.get();
+                ? marketLiquidityService.getBidPriceRange(instrumentCode)
+                : marketLiquidityService.getAskPriceRange(instrumentCode);
+        OrderBookPriceRange bounds = range.orElseThrow(
+                () -> new IllegalArgumentException(ORDER_BOOK_UNAVAILABLE_ERROR));
         if (price.compareTo(bounds.min()) < 0 || price.compareTo(bounds.max()) > 0) {
             throw new IllegalArgumentException(ORDER_BOOK_PRICE_ERROR);
         }

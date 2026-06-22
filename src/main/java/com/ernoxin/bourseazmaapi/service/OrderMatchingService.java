@@ -159,6 +159,10 @@ public class OrderMatchingService {
     }
 
     private List<Trade> matchBuyAgainstMarket(TradingOrder buyOrder) {
+        if (!marketLiquidityService.isOrderBookReady(buyOrder.getInstrumentCode())) {
+            return List.of();
+        }
+
         List<Trade> trades = new ArrayList<>();
         List<MarketLiquidityLevel> askLevels = marketLiquidityService.getAskLevels(buyOrder.getInstrumentCode());
 
@@ -185,6 +189,10 @@ public class OrderMatchingService {
     }
 
     private List<Trade> matchSellAgainstMarket(TradingOrder sellOrder) {
+        if (!marketLiquidityService.isOrderBookReady(sellOrder.getInstrumentCode())) {
+            return List.of();
+        }
+
         List<Trade> trades = new ArrayList<>();
         List<MarketLiquidityLevel> bidLevels = marketLiquidityService.getBidLevels(sellOrder.getInstrumentCode());
 
