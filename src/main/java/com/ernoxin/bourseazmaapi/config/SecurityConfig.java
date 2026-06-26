@@ -56,7 +56,13 @@ public class SecurityConfig {
     @Bean
     public JwtAuthenticationFilter jwtAuthenticationFilter(JwtTokenService jwtTokenService,
                                                            AppUserDetailsService appUserDetailsService,
-                                                           RevokedTokenService revokedTokenService) {
-        return new JwtAuthenticationFilter(jwtTokenService, appUserDetailsService, revokedTokenService);
+                                                           RevokedTokenService revokedTokenService,
+                                                           AuthCookieService authCookieService) {
+        return new JwtAuthenticationFilter(
+                jwtTokenService,
+                appUserDetailsService,
+                revokedTokenService,
+                authCookieService
+        );
     }
 }

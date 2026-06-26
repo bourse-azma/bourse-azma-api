@@ -16,6 +16,8 @@ public interface SupportRequestMessageRepository extends JpaRepository<SupportRe
 
     Optional<SupportRequestMessage> findByIdAndSupportRequestId(Long id, Long supportRequestId);
 
+    boolean existsBySupportRequestIdAndAuthorRole(Long supportRequestId, com.ernoxin.bourseazmaapi.model.UserRole authorRole);
+
     @Query("""
             SELECT m.supportRequest.id AS supportRequestId,
                    COUNT(m) AS replyCount,

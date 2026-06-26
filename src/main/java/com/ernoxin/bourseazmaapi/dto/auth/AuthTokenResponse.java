@@ -10,4 +10,7 @@ public record AuthTokenResponse(
         Long userId,
         UserRole role
 ) {
+    public AuthTokenResponse withoutToken() {
+        return new AuthTokenResponse(null, accessTokenExpiresAt, userId, role);
+    }
 }

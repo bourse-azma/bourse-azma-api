@@ -15,4 +15,6 @@ public class LoginRequest {
     @NotBlank(message = "رمز عبور نباید خالی باشد.")
     @Size(min = 8, max = 24, message = "رمز عبور باید بین ۸ تا ۲۴ کاراکتر باشد.")
     private String password;
+
+    private boolean rememberMe;
 }

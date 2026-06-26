@@ -1,6 +1,7 @@
 package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.dto.*;
+import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.model.SupportRequestCategory;
 import com.ernoxin.bourseazmaapi.model.SupportRequestPriority;
 import com.ernoxin.bourseazmaapi.model.SupportRequestStatus;
@@ -24,10 +25,12 @@ public interface SupportRequestService {
 
     SupportRequestResponse closeCurrentUserRequest(Long id);
 
-    List<SupportRequestResponse> getAllRequests(
+    PagedResponse<SupportRequestResponse> getAllRequests(
             SupportRequestStatus status,
             SupportRequestCategory category,
-            SupportRequestPriority priority
+            SupportRequestPriority priority,
+            int page,
+            int size
     );
 
     SupportRequestDetailResponse getAdminRequestDetail(Long id);

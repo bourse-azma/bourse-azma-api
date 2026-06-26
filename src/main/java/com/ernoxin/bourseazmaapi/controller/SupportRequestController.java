@@ -2,9 +2,6 @@ package com.ernoxin.bourseazmaapi.controller;
 
 import com.ernoxin.bourseazmaapi.dto.*;
 import com.ernoxin.bourseazmaapi.dto.api.ApiResponse;
-import com.ernoxin.bourseazmaapi.model.SupportRequestCategory;
-import com.ernoxin.bourseazmaapi.model.SupportRequestPriority;
-import com.ernoxin.bourseazmaapi.model.SupportRequestStatus;
 import com.ernoxin.bourseazmaapi.service.SupportRequestService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

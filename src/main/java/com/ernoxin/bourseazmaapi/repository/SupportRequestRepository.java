@@ -6,13 +6,14 @@ import com.ernoxin.bourseazmaapi.model.SupportRequestPriority;
 import com.ernoxin.bourseazmaapi.model.SupportRequestStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface SupportRequestRepository extends JpaRepository<SupportRequest, Long> {
+public interface SupportRequestRepository extends JpaRepository<SupportRequest, Long>, JpaSpecificationExecutor<SupportRequest> {
     List<SupportRequest> findAllByUserIdOrderByCreatedAtDesc(Long userId);
 
     Optional<SupportRequest> findByIdAndUserId(Long id, Long userId);

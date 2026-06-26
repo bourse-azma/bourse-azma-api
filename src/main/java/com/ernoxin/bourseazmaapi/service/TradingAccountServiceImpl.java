@@ -52,7 +52,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     @Override
     @Transactional
     public CreateOrderResult createOrder(Long userId, CreateTradingOrderRequest request) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("کاربر یافت نشد."));
 
         String instrumentCode = request.getInstrumentCode().trim();

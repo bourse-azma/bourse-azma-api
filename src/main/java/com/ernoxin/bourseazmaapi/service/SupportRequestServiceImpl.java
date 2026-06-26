@@ -1,6 +1,7 @@
 package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.dto.*;
+import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.bourseazmaapi.model.*;
 import com.ernoxin.bourseazmaapi.repository.SupportRequestMessageRepository;
@@ -8,7 +9,13 @@ import com.ernoxin.bourseazmaapi.repository.SupportRequestMessageStats;
 import com.ernoxin.bourseazmaapi.repository.SupportRequestRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.security.SecurityUtils;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +31,7 @@ import java.util.Map;
 public class SupportRequestServiceImpl implements SupportRequestService {
 
     private static final long MESSAGE_EDIT_WINDOW_MINUTES = 10;
+    private static final String SUPPORT_DISPLAY_NAME = "پشتیبانی";
 
     private final SupportRequestRepository supportRequestRepository;
     private final SupportRequestMessageRepository supportRequestMessageRepository;
@@ -84,7 +92,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         User user = userRepository.getReferenceById(userId);
         SupportRequestMessage message = createMessage(supportRequest, user, UserRole.USER, request.getMessage());
         touchRequest(supportRequest);
-        return toMessageDto(message);
+        return toMessageDto(message, true);
     }
 
     @Override
@@ -100,12 +108,13 @@ public class SupportRequestServiceImpl implements SupportRequestService {
             throw new IllegalArgumentException("فقط پیام‌های خودتان قابل ویرایش هستند.");
         }
 
+        ensureTicketOpenForUserEdit(supportRequest);
         ensureEditableWithinWindow(message.getCreatedAt());
         message.setMessage(normalizeRequiredText(request.getMessage()));
         message.setEditedAt(Instant.now());
         SupportRequestMessage saved = supportRequestMessageRepository.save(message);
         touchRequest(supportRequest);
-        return toMessageDto(saved);
+        return toMessageDto(saved, true);
     }
 
     @Override
@@ -115,12 +124,13 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
 
-        ensureEditableWithinWindow(supportRequest.getCreatedAt());
+        ensureTicketOpenForUserEdit(supportRequest);
+        ensureInitialMessageEditable(supportRequest);
         supportRequest.setMessage(normalizeRequiredText(request.getMessage()));
         supportRequest.setMessageEditedAt(Instant.now());
         supportRequest.setUpdatedAt(Instant.now());
         SupportRequest saved = supportRequestRepository.save(supportRequest);
-        return toInitialMessageDto(saved);
+        return toInitialMessageDto(saved, true);
     }
 
     @Override
@@ -166,13 +176,29 @@ public class SupportRequestServiceImpl implements SupportRequestService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<SupportRequestResponse> getAllRequests(
+    public PagedResponse<SupportRequestResponse> getAllRequests(
             SupportRequestStatus status,
             SupportRequestCategory category,
-            SupportRequestPriority priority
+            SupportRequestPriority priority,
+            int page,
+            int size
     ) {
-        List<SupportRequest> requests = findAdminRequests(status, category, priority);
-        return mapToSummaryList(requests, true);
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<SupportRequest> result = supportRequestRepository.findAll(
+                buildAdminFilterSpecification(status, category, priority),
+                pageable
+        );
+        List<SupportRequestResponse> items = mapToSummaryList(result.getContent(), true);
+        return new PagedResponse<>(
+                items,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.hasNext()
+        );
     }
 
     @Override
@@ -198,7 +224,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
             supportRequest.setStatus(SupportRequestStatus.IN_PROGRESS);
         }
         touchRequest(supportRequest);
-        return toMessageDto(message);
+        return toMessageDto(message, false);
     }
 
     @Override
@@ -219,7 +245,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         message.setEditedAt(Instant.now());
         SupportRequestMessage saved = supportRequestMessageRepository.save(message);
         touchRequest(supportRequest);
-        return toMessageDto(saved);
+        return toMessageDto(saved, false);
     }
 
     @Override
@@ -229,17 +255,18 @@ public class SupportRequestServiceImpl implements SupportRequestService {
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
 
         SupportRequestStatus newStatus = request.getStatus();
+        if (newStatus == SupportRequestStatus.RESOLVED) {
+            throw new IllegalArgumentException("وضعیت «بسته‌شده» تنها گزینه پایان کار تیکت است.");
+        }
         supportRequest.setStatus(newStatus);
         Instant now = Instant.now();
         supportRequest.setUpdatedAt(now);
-        if (newStatus == SupportRequestStatus.CLOSED || newStatus == SupportRequestStatus.RESOLVED) {
+        if (newStatus == SupportRequestStatus.CLOSED) {
             supportRequest.setClosedAt(now);
+            supportRequest.setClosedBy(SupportRequestClosedBy.ADMIN);
         } else {
             supportRequest.setClosedAt(null);
             supportRequest.setClosedBy(null);
-        }
-        if (newStatus == SupportRequestStatus.CLOSED) {
-            supportRequest.setClosedBy(SupportRequestClosedBy.ADMIN);
         }
 
         SupportRequest saved = supportRequestRepository.save(supportRequest);
@@ -277,35 +304,24 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         return MessageStats.empty(request.getCreatedAt());
     }
 
-    private List<SupportRequest> findAdminRequests(
+    private Specification<SupportRequest> buildAdminFilterSpecification(
             SupportRequestStatus status,
             SupportRequestCategory category,
             SupportRequestPriority priority
     ) {
-        if (status != null && category != null && priority != null) {
-            return supportRequestRepository.findAllByStatusAndCategoryAndPriorityOrderByCreatedAtDesc(
-                    status, category, priority
-            );
-        }
-        if (status != null && category != null) {
-            return supportRequestRepository.findAllByStatusAndCategoryOrderByCreatedAtDesc(status, category);
-        }
-        if (status != null && priority != null) {
-            return supportRequestRepository.findAllByStatusAndPriorityOrderByCreatedAtDesc(status, priority);
-        }
-        if (category != null && priority != null) {
-            return supportRequestRepository.findAllByCategoryAndPriorityOrderByCreatedAtDesc(category, priority);
-        }
-        if (status != null) {
-            return supportRequestRepository.findAllByStatusOrderByCreatedAtDesc(status);
-        }
-        if (category != null) {
-            return supportRequestRepository.findAllByCategoryOrderByCreatedAtDesc(category);
-        }
-        if (priority != null) {
-            return supportRequestRepository.findAllByPriorityOrderByCreatedAtDesc(priority);
-        }
-        return supportRequestRepository.findAllByOrderByCreatedAtDesc();
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (category != null) {
+                predicates.add(cb.equal(root.get("category"), category));
+            }
+            if (priority != null) {
+                predicates.add(cb.equal(root.get("priority"), priority));
+            }
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
     }
 
     private SupportRequestDetailResponse toDetailDto(SupportRequest request, boolean includeUser, boolean fullUserDetails) {
@@ -317,26 +333,20 @@ public class SupportRequestServiceImpl implements SupportRequestService {
                 threadMessages.size(),
                 threadMessages.get(threadMessages.size() - 1).getCreatedAt()
         );
-        List<SupportRequestMessageResponse> messages = buildConversation(request, threadMessages);
+        boolean maskAuthorIdentity = !includeUser;
+        List<SupportRequestMessageResponse> messages = buildConversation(request, threadMessages, maskAuthorIdentity);
         return new SupportRequestDetailResponse(toSummaryDto(request, includeUser, stats, fullUserDetails), messages);
     }
 
     private List<SupportRequestMessageResponse> buildConversation(
             SupportRequest request,
-            List<SupportRequestMessage> threadMessages
+            List<SupportRequestMessage> threadMessages,
+            boolean maskAuthorIdentity
     ) {
         List<SupportRequestMessageResponse> messages = new ArrayList<>();
-        messages.add(new SupportRequestMessageResponse(
-                null,
-                request.getMessage(),
-                UserRole.USER.name(),
-                displayName(request.getUser()),
-                request.getUser().getId(),
-                request.getCreatedAt().toString(),
-                request.getMessageEditedAt() == null ? null : request.getMessageEditedAt().toString()
-        ));
+        messages.add(toInitialMessageDto(request, maskAuthorIdentity));
         threadMessages.stream()
-                .map(this::toMessageDto)
+                .map(message -> toMessageDto(message, maskAuthorIdentity))
                 .forEach(messages::add);
         return messages;
     }
@@ -351,7 +361,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
                 request.getId(),
                 request.getSubject(),
                 request.getMessage(),
-                request.getStatus().name(),
+                normalizeStatus(request.getStatus()).name(),
                 request.getCategory().name(),
                 request.getPriority().name(),
                 request.getRating(),
@@ -379,28 +389,32 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         );
     }
 
-    private SupportRequestMessageResponse toMessageDto(SupportRequestMessage message) {
+    private SupportRequestMessageResponse toMessageDto(SupportRequestMessage message, boolean maskAuthorIdentity) {
         return new SupportRequestMessageResponse(
                 message.getId(),
                 message.getMessage(),
                 message.getAuthorRole().name(),
-                displayName(message.getAuthor()),
-                message.getAuthor().getId(),
+                resolveAuthorName(message.getAuthor(), message.getAuthorRole(), maskAuthorIdentity),
+                maskAuthorIdentity ? null : message.getAuthor().getId(),
                 message.getCreatedAt().toString(),
                 message.getEditedAt() == null ? null : message.getEditedAt().toString()
         );
     }
 
-    private SupportRequestMessageResponse toInitialMessageDto(SupportRequest request) {
+    private SupportRequestMessageResponse toInitialMessageDto(SupportRequest request, boolean maskAuthorIdentity) {
         return new SupportRequestMessageResponse(
                 null,
                 request.getMessage(),
                 UserRole.USER.name(),
-                displayName(request.getUser()),
-                request.getUser().getId(),
+                resolveAuthorName(request.getUser(), UserRole.USER, maskAuthorIdentity),
+                maskAuthorIdentity ? null : request.getUser().getId(),
                 request.getCreatedAt().toString(),
                 request.getMessageEditedAt() == null ? null : request.getMessageEditedAt().toString()
         );
+    }
+
+    private SupportRequestMessageResponse toInitialMessageDto(SupportRequest request) {
+        return toInitialMessageDto(request, false);
     }
 
     private SupportRequestMessage createMessage(
@@ -429,16 +443,31 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     }
 
     private void ensureUserCanReply(SupportRequest supportRequest) {
-        if (supportRequest.getStatus() == SupportRequestStatus.CLOSED
-                || supportRequest.getStatus() == SupportRequestStatus.RESOLVED) {
+        if (isClosedStatus(supportRequest.getStatus())) {
             throw new IllegalArgumentException("این تیکت دیگر باز نیست و امکان ارسال پیام جدید وجود ندارد.");
         }
     }
 
     private void ensureAdminCanReply(SupportRequest supportRequest) {
-        if (supportRequest.getStatus() == SupportRequestStatus.CLOSED) {
-            throw new IllegalArgumentException("تیکت بسته شده است. برای پاسخ، ابتدا وضعیت را تغییر دهید.");
+        if (isClosedStatus(supportRequest.getStatus())) {
+            throw new IllegalArgumentException("تیکت بسته شده است و امکان ارسال پیام جدید وجود ندارد.");
         }
+    }
+
+    private void ensureTicketOpenForUserEdit(SupportRequest supportRequest) {
+        if (isClosedStatus(supportRequest.getStatus())) {
+            throw new IllegalArgumentException("این تیکت بسته شده و امکان ویرایش پیام وجود ندارد.");
+        }
+    }
+
+    private void ensureInitialMessageEditable(SupportRequest supportRequest) {
+        if (supportRequestMessageRepository.existsBySupportRequestIdAndAuthorRole(
+                supportRequest.getId(),
+                UserRole.ADMIN
+        )) {
+            throw new IllegalArgumentException("پس از دریافت پاسخ پشتیبانی امکان ویرایش پیام اولیه وجود ندارد.");
+        }
+        ensureEditableWithinWindow(supportRequest.getCreatedAt());
     }
 
     private void ensureEditableWithinWindow(Instant createdAt) {
@@ -453,7 +482,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
             boolean includeUser,
             SupportRequestClosedBy closedBy
     ) {
-        if (supportRequest.getStatus() == SupportRequestStatus.CLOSED) {
+        if (isClosedStatus(supportRequest.getStatus())) {
             throw new IllegalArgumentException("این تیکت قبلا بسته شده است.");
         }
 
@@ -469,7 +498,22 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     }
 
     private boolean isRateableStatus(SupportRequestStatus status) {
-        return status == SupportRequestStatus.CLOSED;
+        return normalizeStatus(status) == SupportRequestStatus.CLOSED;
+    }
+
+    private boolean isClosedStatus(SupportRequestStatus status) {
+        return status == SupportRequestStatus.CLOSED || status == SupportRequestStatus.RESOLVED;
+    }
+
+    private SupportRequestStatus normalizeStatus(SupportRequestStatus status) {
+        return status == SupportRequestStatus.RESOLVED ? SupportRequestStatus.CLOSED : status;
+    }
+
+    private String resolveAuthorName(User user, UserRole authorRole, boolean maskAuthorIdentity) {
+        if (maskAuthorIdentity && authorRole == UserRole.ADMIN) {
+            return SUPPORT_DISPLAY_NAME;
+        }
+        return displayName(user);
     }
 
     private String displayName(User user) {

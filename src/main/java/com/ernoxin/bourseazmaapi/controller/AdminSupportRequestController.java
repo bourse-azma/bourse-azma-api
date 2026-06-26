@@ -2,6 +2,7 @@ package com.ernoxin.bourseazmaapi.controller;
 
 import com.ernoxin.bourseazmaapi.dto.*;
 import com.ernoxin.bourseazmaapi.dto.api.ApiResponse;
+import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.model.SupportRequestCategory;
 import com.ernoxin.bourseazmaapi.model.SupportRequestPriority;
 import com.ernoxin.bourseazmaapi.model.SupportRequestStatus;
@@ -12,8 +13,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/v1/admin/support-requests")
 @RequiredArgsConstructor
@@ -23,15 +22,17 @@ public class AdminSupportRequestController {
     private final SupportRequestService supportRequestService;
 
     @GetMapping
-    public ApiResponse<List<SupportRequestResponse>> getAll(
+    public ApiResponse<PagedResponse<SupportRequestResponse>> getAll(
             @RequestParam(required = false) SupportRequestStatus status,
             @RequestParam(required = false) SupportRequestCategory category,
-            @RequestParam(required = false) SupportRequestPriority priority
+            @RequestParam(required = false) SupportRequestPriority priority,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
     ) {
         return ApiResponse.of(
                 HttpStatus.OK,
                 "عملیات با موفقیت انجام شد",
-                supportRequestService.getAllRequests(status, category, priority)
+                supportRequestService.getAllRequests(status, category, priority, page, size)
         );
     }
 

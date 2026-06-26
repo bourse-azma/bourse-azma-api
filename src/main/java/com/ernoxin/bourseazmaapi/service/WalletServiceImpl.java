@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.service;
 import com.ernoxin.bourseazmaapi.dto.UserResponse;
 import com.ernoxin.bourseazmaapi.dto.WalletAdjustmentRequest;
 import com.ernoxin.bourseazmaapi.dto.WalletTransactionResponse;
+import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.bourseazmaapi.mapper.UserMapper;
 import com.ernoxin.bourseazmaapi.mapper.WalletMapper;
@@ -11,6 +12,9 @@ import com.ernoxin.bourseazmaapi.model.WalletTransaction;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,7 +22,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.time.Instant;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -99,10 +102,22 @@ public class WalletServiceImpl implements WalletService {
     }
 
     @Override
-    public List<WalletTransactionResponse> getTransactions(Long userId) {
+    public PagedResponse<WalletTransactionResponse> getTransactions(Long userId, int page, int size) {
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("کاربر مورد نظر یافت نشد.");
         }
-        return walletMapper.toDtoList(walletTransactionRepository.findAllByUserIdOrderByCreatedAtDesc(userId));
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+        Page<WalletTransaction> result =
+                walletTransactionRepository.findAllByUserIdOrderByCreatedAtDesc(userId, pageable);
+        return new PagedResponse<>(
+                walletMapper.toDtoList(result.getContent()),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.hasNext()
+        );
     }
 }
