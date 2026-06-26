@@ -22,9 +22,37 @@ public class SupportRequest extends BaseEntity<Long> {
     @Column(nullable = false, length = 2000)
     private String message;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String status = "OPEN";
+    private SupportRequestStatus status = SupportRequestStatus.OPEN;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private SupportRequestCategory category = SupportRequestCategory.OTHER;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private SupportRequestPriority priority = SupportRequestPriority.MEDIUM;
+
+    @Column
+    private Integer rating;
+
+    @Column(length = 500)
+    private String ratingComment;
 
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
+
+    @Column(nullable = false)
+    private Instant updatedAt = Instant.now();
+
+    @Column
+    private Instant closedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 10)
+    private SupportRequestClosedBy closedBy;
+
+    @Column
+    private Instant messageEditedAt;
 }

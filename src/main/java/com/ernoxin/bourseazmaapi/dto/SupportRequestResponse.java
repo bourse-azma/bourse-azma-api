@@ -5,6 +5,16 @@ public record SupportRequestResponse(
         String subject,
         String message,
         String status,
-        String createdAt
+        String category,
+        String priority,
+        Integer rating,
+        String ratingComment,
+        int messageCount,
+        String lastReplyAt,
+        String createdAt,
+        String updatedAt,
+        String closedAt,
+        String closedBy,
+        SupportRequestUserSummary user
 ) {
 }

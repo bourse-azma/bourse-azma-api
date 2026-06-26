@@ -1,10 +1,13 @@
 package com.ernoxin.bourseazmaapi.dto.auth;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.math.BigDecimal;
 
 @Setter
 @Getter
@@ -38,4 +41,7 @@ public class RegisterRequest {
             message = "رمز عبور باید حداقل شامل یک حرف و یک عدد باشد."
     )
     private String password;
+
+    @DecimalMin(value = "0", message = "موجودی اولیه نمی‌تواند منفی باشد.")
+    private BigDecimal balance;
 }

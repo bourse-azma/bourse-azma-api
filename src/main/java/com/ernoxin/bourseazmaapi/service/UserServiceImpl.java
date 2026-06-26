@@ -29,8 +29,6 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
-    private static final BigDecimal DEFAULT_REGISTRATION_BALANCE = BigDecimal.valueOf(100_000_000L);
-
     private final UserRepository userRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final UserMapper userMapper;
@@ -47,8 +45,12 @@ public class UserServiceImpl implements UserService {
         createRequest.setPhoneNumber(request.getPhoneNumber());
         createRequest.setEmail(request.getEmail());
         createRequest.setPassword(request.getPassword());
-        createRequest.setBalance(DEFAULT_REGISTRATION_BALANCE);
+        createRequest.setBalance(resolveRegistrationBalance(request.getBalance()));
         return create(createRequest);
+    }
+
+    private BigDecimal resolveRegistrationBalance(BigDecimal balance) {
+        return balance != null ? balance : BigDecimal.ZERO;
     }
 
     @Override
@@ -59,18 +61,21 @@ public class UserServiceImpl implements UserService {
         User user = userMapper.toEntity(request);
         user.setRole(UserRole.USER);
 
-        BigDecimal initialBalance = request.getBalance() != null ? request.getBalance() : BigDecimal.valueOf(100_000_000L);
+        BigDecimal initialBalance = request.getBalance() != null ? request.getBalance() : BigDecimal.ZERO;
         user.setBalance(initialBalance);
 
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         User savedUser = userRepository.save(user);
 
-        // Save initial wallet transaction
         WalletTransaction initialTx = new WalletTransaction();
         initialTx.setUser(savedUser);
         initialTx.setAmount(initialBalance);
         initialTx.setBalanceAfter(initialBalance);
-        initialTx.setDescription("موجودی اولیه به مبلغ " + initialBalance.toPlainString() + " ریال هنگام ثبت‌نام");
+        if (initialBalance.compareTo(BigDecimal.ZERO) > 0) {
+            initialTx.setDescription("موجودی اولیه به مبلغ " + initialBalance.toPlainString() + " ریال هنگام ثبت‌نام");
+        } else {
+            initialTx.setDescription("ثبت‌نام بدون موجودی اولیه");
+        }
         initialTx.setCreatedAt(Instant.now());
         walletTransactionRepository.save(initialTx);
 
