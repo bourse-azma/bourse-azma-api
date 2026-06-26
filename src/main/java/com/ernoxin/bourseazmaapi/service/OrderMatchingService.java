@@ -30,6 +30,7 @@ public class OrderMatchingService {
     private final UserRepository userRepository;
     private final MarketLiquidityService marketLiquidityService;
     private final MarketMakerService marketMakerService;
+    private final WalletLedgerService walletLedgerService;
 
     /**
      * Match the given incoming order against peer orders and TSETMC order-book liquidity.
@@ -121,7 +122,9 @@ public class OrderMatchingService {
             long matchQuantity = Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
 
             Trade trade = executeTrade(buyOrder, sellOrder, matchQuantity, executionPrice);
-            trades.add(trade);
+            if (trade != null) {
+                trades.add(trade);
+            }
         }
 
         return trades;
@@ -152,7 +155,9 @@ public class OrderMatchingService {
             long matchQuantity = Math.min(sellOrder.getRemainingQuantity(), buyOrder.getRemainingQuantity());
 
             Trade trade = executeTrade(buyOrder, sellOrder, matchQuantity, executionPrice);
-            trades.add(trade);
+            if (trade != null) {
+                trades.add(trade);
+            }
         }
 
         return trades;
@@ -182,7 +187,9 @@ public class OrderMatchingService {
             TradingOrder marketSellOrder = marketMakerService.createCompletedCounterOrder(
                     buyOrder, OrderSide.SELL, matchQuantity, level.price());
             Trade trade = executeTrade(buyOrder, marketSellOrder, matchQuantity, level.price());
-            trades.add(trade);
+            if (trade != null) {
+                trades.add(trade);
+            }
         }
 
         return trades;
@@ -212,7 +219,9 @@ public class OrderMatchingService {
             TradingOrder marketBuyOrder = marketMakerService.createCompletedCounterOrder(
                     sellOrder, OrderSide.BUY, matchQuantity, level.price());
             Trade trade = executeTrade(marketBuyOrder, sellOrder, matchQuantity, level.price());
-            trades.add(trade);
+            if (trade != null) {
+                trades.add(trade);
+            }
         }
 
         return trades;
@@ -221,6 +230,42 @@ public class OrderMatchingService {
     private Trade executeTrade(TradingOrder buyOrder, TradingOrder sellOrder,
                                long quantity, BigDecimal price) {
         BigDecimal tradeValue = price.multiply(BigDecimal.valueOf(quantity));
+
+        boolean buyerIsMarketMaker = marketMakerService.isMarketMaker(buyOrder.getUser());
+        boolean sellerIsMarketMaker = marketMakerService.isMarketMaker(sellOrder.getUser());
+
+        if (!buyerIsMarketMaker) {
+            User buyer = userRepository.findByIdForUpdate(buyOrder.getUser().getId())
+                    .orElse(null);
+            if (buyer == null) {
+                failBuyOrder(buyOrder, "حساب خریدار یافت نشد.");
+                return null;
+            }
+            BigDecimal buyerBalance = buyer.getBalance() != null ? buyer.getBalance() : BigDecimal.ZERO;
+            if (buyerBalance.compareTo(tradeValue) < 0) {
+                failBuyOrder(buyOrder, "موجودی کافی برای اجرای سفارش خرید وجود ندارد.");
+                return null;
+            }
+            buyOrder.setUser(buyer);
+        }
+
+        if (!sellerIsMarketMaker) {
+            long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCode(
+                    sellOrder.getUser().getId(),
+                    sellOrder.getInstrumentCode()
+            ).stream().mapToLong(PortfolioHolding::getQuantity).sum();
+            if (available < quantity) {
+                failSellOrder(sellOrder, "موجودی کافی برای اجرای سفارش فروش وجود ندارد.");
+                return null;
+            }
+            User seller = userRepository.findByIdForUpdate(sellOrder.getUser().getId())
+                    .orElse(null);
+            if (seller == null) {
+                failSellOrder(sellOrder, "حساب فروشنده یافت نشد.");
+                return null;
+            }
+            sellOrder.setUser(seller);
+        }
 
         buyOrder.setExecutedQuantity(buyOrder.getExecutedQuantity() + quantity);
         buyOrder.setRemainingQuantity(buyOrder.getRemainingQuantity() - quantity);
@@ -234,22 +279,33 @@ public class OrderMatchingService {
         updateOrderStatus(sellOrder);
         tradingOrderRepository.save(sellOrder);
 
-        boolean buyerIsMarketMaker = marketMakerService.isMarketMaker(buyOrder.getUser());
-        boolean sellerIsMarketMaker = marketMakerService.isMarketMaker(sellOrder.getUser());
-
         if (!buyerIsMarketMaker) {
+            User buyer = buyOrder.getUser();
+            BigDecimal buyerBalance = buyer.getBalance() != null ? buyer.getBalance() : BigDecimal.ZERO;
+            BigDecimal newBalance = buyerBalance.subtract(tradeValue);
+            buyer.setBalance(newBalance);
+            userRepository.save(buyer);
             addHolding(buyOrder.getUser().getId(), buyOrder.getSymbol(), buyOrder.getInstrumentCode(),
                     quantity, price);
-            var buyer = buyOrder.getUser();
-            buyer.setBalance(buyer.getBalance().subtract(tradeValue));
-            userRepository.save(buyer);
+            walletLedgerService.recordBalanceChange(
+                    buyer,
+                    tradeValue.negate(),
+                    String.format("خرید %s به تعداد %d با قیمت %s ریال", buyOrder.getSymbol(), quantity, price.toPlainString())
+            );
         }
 
         if (!sellerIsMarketMaker) {
-            removeHolding(sellOrder.getUser().getId(), sellOrder.getInstrumentCode(), quantity);
-            var seller = sellOrder.getUser();
-            seller.setBalance(seller.getBalance().add(tradeValue));
+            User seller = sellOrder.getUser();
+            BigDecimal sellerBalance = seller.getBalance() != null ? seller.getBalance() : BigDecimal.ZERO;
+            BigDecimal newBalance = sellerBalance.add(tradeValue);
+            seller.setBalance(newBalance);
             userRepository.save(seller);
+            removeHolding(sellOrder.getUser().getId(), sellOrder.getInstrumentCode(), quantity);
+            walletLedgerService.recordBalanceChange(
+                    seller,
+                    tradeValue,
+                    String.format("فروش %s به تعداد %d با قیمت %s ریال", sellOrder.getSymbol(), quantity, price.toPlainString())
+            );
         }
 
         Trade trade = new Trade();
@@ -265,6 +321,22 @@ public class OrderMatchingService {
         trade.setSeller(sellOrder.getUser());
 
         return tradeRepository.save(trade);
+    }
+
+    private void failBuyOrder(TradingOrder buyOrder, String reason) {
+        buyOrder.setStatus(OrderStatus.FAILED);
+        buyOrder.setRemainingQuantity(0L);
+        buyOrder.setCancelledAt(Instant.now());
+        tradingOrderRepository.save(buyOrder);
+        log.warn("Buy order {} failed during matching: {}", buyOrder.getId(), reason);
+    }
+
+    private void failSellOrder(TradingOrder sellOrder, String reason) {
+        sellOrder.setStatus(OrderStatus.FAILED);
+        sellOrder.setRemainingQuantity(0L);
+        sellOrder.setCancelledAt(Instant.now());
+        tradingOrderRepository.save(sellOrder);
+        log.warn("Sell order {} failed during matching: {}", sellOrder.getId(), reason);
     }
 
     private void addHolding(Long userId, String symbol, String instrumentCode,

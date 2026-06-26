@@ -40,7 +40,7 @@ public class WalletServiceImpl implements WalletService {
     @Override
     @Transactional
     public UserResponse adjustBalance(Long userId, WalletAdjustmentRequest request) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("کاربر مورد نظر یافت نشد."));
 
         BigDecimal oldBalance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;

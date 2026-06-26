@@ -84,7 +84,9 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserResponse getById(Long id) {
-        validateOwnerOrAdmin(id);
+        if (SecurityUtils.currentUserRole() != UserRole.ADMIN && !SecurityUtils.currentUserId().equals(id)) {
+            throw new ResourceNotFoundException("کاربر مورد نظر یافت نشد.");
+        }
         return userMapper.toDto(findById(id));
     }
 

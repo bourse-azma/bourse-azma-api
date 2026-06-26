@@ -7,6 +7,7 @@ public record SupportRequestMessageResponse(
         String authorName,
         Long authorUserId,
         String createdAt,
-        String editedAt
+        String editedAt,
+        String seenAt
 ) {
 }

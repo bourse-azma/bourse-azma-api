@@ -136,12 +136,8 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     @Override
     @Transactional
     public CancelOrderResult cancelOrder(Long userId, Long orderId) {
-        TradingOrder order = tradingOrderRepository.findById(orderId)
+        TradingOrder order = tradingOrderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("سفارش یافت نشد."));
-
-        if (!order.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("شما مجاز به لغو این سفارش نیستید.");
-        }
 
         if (!order.isCancellable()) {
             String reason = switch (order.getStatus()) {

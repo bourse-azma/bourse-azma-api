@@ -32,4 +32,7 @@ public class SupportRequestMessage extends BaseEntity<Long> {
 
     @Column
     private Instant editedAt;
+
+    @Column
+    private Instant seenAt;
 }

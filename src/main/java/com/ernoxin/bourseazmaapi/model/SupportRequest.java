@@ -55,4 +55,7 @@ public class SupportRequest extends BaseEntity<Long> {
 
     @Column
     private Instant messageEditedAt;
+
+    @Column
+    private Instant initialMessageSeenAt;
 }

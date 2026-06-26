@@ -9,10 +9,15 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long> {
     List<TradingOrder> findAllByUserIdOrderByOrderTimeDesc(Long userId);
+
+    Optional<TradingOrder> findByIdAndUserId(Long id, Long userId);
+
+    List<TradingOrder> findAllByStatusOrderByOrderTimeAsc(OrderStatus status);
 
     List<TradingOrder> findAllByUserIdAndInstrumentCodeAndSideAndStatus(Long userId,
                                                                         String instrumentCode,

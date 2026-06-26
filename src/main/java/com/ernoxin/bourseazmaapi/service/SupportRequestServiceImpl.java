@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,7 +29,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SupportRequestServiceImpl implements SupportRequestService {
 
-    private static final long MESSAGE_EDIT_WINDOW_MINUTES = 10;
     private static final String SUPPORT_DISPLAY_NAME = "پشتیبانی";
 
     private final SupportRequestRepository supportRequestRepository;
@@ -73,11 +71,12 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public SupportRequestDetailResponse getCurrentUserRequestDetail(Long id) {
         Long userId = SecurityUtils.currentUserId();
         SupportRequest request = supportRequestRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        markMessagesSeenByUser(request);
         return toDetailDto(request, false, false);
     }
 
@@ -109,7 +108,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         }
 
         ensureTicketOpenForUserEdit(supportRequest);
-        ensureEditableWithinWindow(message.getCreatedAt());
+        ensureMessageNotSeen(message);
         message.setMessage(normalizeRequiredText(request.getMessage()));
         message.setEditedAt(Instant.now());
         SupportRequestMessage saved = supportRequestMessageRepository.save(message);
@@ -202,10 +201,11 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public SupportRequestDetailResponse getAdminRequestDetail(Long id) {
         SupportRequest request = supportRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        markMessagesSeenByAdmin(request);
         return toDetailDto(request, true, true);
     }
 
@@ -240,7 +240,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
             throw new IllegalArgumentException("فقط پیام‌های خودتان قابل ویرایش هستند.");
         }
 
-        ensureEditableWithinWindow(message.getCreatedAt());
+        ensureMessageNotSeen(message);
         message.setMessage(normalizeRequiredText(request.getMessage()));
         message.setEditedAt(Instant.now());
         SupportRequestMessage saved = supportRequestMessageRepository.save(message);
@@ -255,9 +255,11 @@ public class SupportRequestServiceImpl implements SupportRequestService {
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
 
         SupportRequestStatus newStatus = request.getStatus();
+        SupportRequestStatus currentStatus = normalizeStatus(supportRequest.getStatus());
         if (newStatus == SupportRequestStatus.RESOLVED) {
             throw new IllegalArgumentException("وضعیت «بسته‌شده» تنها گزینه پایان کار تیکت است.");
         }
+        validateStatusTransition(currentStatus, newStatus);
         supportRequest.setStatus(newStatus);
         Instant now = Instant.now();
         supportRequest.setUpdatedAt(now);
@@ -397,7 +399,8 @@ public class SupportRequestServiceImpl implements SupportRequestService {
                 resolveAuthorName(message.getAuthor(), message.getAuthorRole(), maskAuthorIdentity),
                 maskAuthorIdentity ? null : message.getAuthor().getId(),
                 message.getCreatedAt().toString(),
-                message.getEditedAt() == null ? null : message.getEditedAt().toString()
+                message.getEditedAt() == null ? null : message.getEditedAt().toString(),
+                message.getSeenAt() == null ? null : message.getSeenAt().toString()
         );
     }
 
@@ -409,7 +412,8 @@ public class SupportRequestServiceImpl implements SupportRequestService {
                 resolveAuthorName(request.getUser(), UserRole.USER, maskAuthorIdentity),
                 maskAuthorIdentity ? null : request.getUser().getId(),
                 request.getCreatedAt().toString(),
-                request.getMessageEditedAt() == null ? null : request.getMessageEditedAt().toString()
+                request.getMessageEditedAt() == null ? null : request.getMessageEditedAt().toString(),
+                request.getInitialMessageSeenAt() == null ? null : request.getInitialMessageSeenAt().toString()
         );
     }
 
@@ -461,19 +465,65 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     }
 
     private void ensureInitialMessageEditable(SupportRequest supportRequest) {
+        if (supportRequest.getInitialMessageSeenAt() != null) {
+            throw new IllegalArgumentException("این پیام توسط پشتیبانی مشاهده شده و دیگر قابل ویرایش نیست.");
+        }
         if (supportRequestMessageRepository.existsBySupportRequestIdAndAuthorRole(
                 supportRequest.getId(),
                 UserRole.ADMIN
         )) {
             throw new IllegalArgumentException("پس از دریافت پاسخ پشتیبانی امکان ویرایش پیام اولیه وجود ندارد.");
         }
-        ensureEditableWithinWindow(supportRequest.getCreatedAt());
     }
 
-    private void ensureEditableWithinWindow(Instant createdAt) {
-        Instant deadline = createdAt.plus(MESSAGE_EDIT_WINDOW_MINUTES, ChronoUnit.MINUTES);
-        if (Instant.now().isAfter(deadline)) {
-            throw new IllegalArgumentException("فقط تا ۱۰ دقیقه پس از ارسال امکان ویرایش پیام وجود دارد.");
+    private void ensureMessageNotSeen(SupportRequestMessage message) {
+        if (message.getSeenAt() != null) {
+            throw new IllegalArgumentException("پیام‌های مشاهده‌شده دیگر قابل ویرایش نیستند.");
+        }
+    }
+
+    private void validateStatusTransition(SupportRequestStatus current, SupportRequestStatus next) {
+        if (current == next) {
+            return;
+        }
+        if (current == SupportRequestStatus.CLOSED) {
+            throw new IllegalArgumentException("تیکت بسته شده و وضعیت آن قابل تغییر نیست.");
+        }
+        boolean allowed = switch (current) {
+            case OPEN -> next == SupportRequestStatus.IN_PROGRESS || next == SupportRequestStatus.CLOSED;
+            case IN_PROGRESS -> next == SupportRequestStatus.CLOSED;
+            case CLOSED, RESOLVED -> false;
+        };
+        if (!allowed) {
+            throw new IllegalArgumentException("تغییر وضعیت از «" + current.name() + "» به «" + next.name() + "» مجاز نیست.");
+        }
+    }
+
+    private void markMessagesSeenByUser(SupportRequest request) {
+        Instant now = Instant.now();
+        List<SupportRequestMessage> messages =
+                supportRequestMessageRepository.findAllBySupportRequestIdOrderByCreatedAtAsc(request.getId());
+        for (SupportRequestMessage message : messages) {
+            if (message.getAuthorRole() == UserRole.ADMIN && message.getSeenAt() == null) {
+                message.setSeenAt(now);
+                supportRequestMessageRepository.save(message);
+            }
+        }
+    }
+
+    private void markMessagesSeenByAdmin(SupportRequest request) {
+        Instant now = Instant.now();
+        if (request.getInitialMessageSeenAt() == null) {
+            request.setInitialMessageSeenAt(now);
+            supportRequestRepository.save(request);
+        }
+        List<SupportRequestMessage> messages =
+                supportRequestMessageRepository.findAllBySupportRequestIdOrderByCreatedAtAsc(request.getId());
+        for (SupportRequestMessage message : messages) {
+            if (message.getAuthorRole() == UserRole.USER && message.getSeenAt() == null) {
+                message.setSeenAt(now);
+                supportRequestMessageRepository.save(message);
+            }
         }
     }
 

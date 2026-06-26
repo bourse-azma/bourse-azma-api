@@ -46,6 +46,28 @@ public class MarketLiquidityService {
         return getBidPriceRange(normalizedCode).isPresent() && getAskPriceRange(normalizedCode).isPresent();
     }
 
+    public java.util.Optional<BigDecimal> getReferencePrice(String instrumentCode) {
+        String normalizedCode = instrumentCode == null ? "" : instrumentCode.trim();
+        if (normalizedCode.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+
+        List<MarketLiquidityLevel> bids = getBidLevels(normalizedCode);
+        List<MarketLiquidityLevel> asks = getAskLevels(normalizedCode);
+        if (bids.isEmpty() && asks.isEmpty()) {
+            return java.util.Optional.empty();
+        }
+        if (!bids.isEmpty() && !asks.isEmpty()) {
+            BigDecimal mid = bids.get(0).price().add(asks.get(0).price())
+                    .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+            return java.util.Optional.of(mid);
+        }
+        if (!asks.isEmpty()) {
+            return java.util.Optional.of(asks.get(0).price());
+        }
+        return java.util.Optional.of(bids.get(0).price());
+    }
+
     private Optional<OrderBookPriceRange> toPriceRange(List<MarketLiquidityLevel> levels) {
         if (levels.isEmpty()) {
             return Optional.empty();

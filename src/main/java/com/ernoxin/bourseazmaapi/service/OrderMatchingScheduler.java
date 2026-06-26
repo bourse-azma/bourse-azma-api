@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 public class OrderMatchingScheduler {
 
     private final OrderMatchingService orderMatchingService;
+    private final OrderTriggerService orderTriggerService;
     private final OrderMatchingProperties properties;
 
     @Scheduled(fixedDelayString = "${app.order-matching.poll-interval-ms:5000}")
@@ -21,6 +22,10 @@ public class OrderMatchingScheduler {
         }
 
         try {
+            int triggeredCount = orderTriggerService.evaluatePendingTriggers();
+            if (triggeredCount > 0) {
+                log.debug("Order trigger service activated {} conditional order(s).", triggeredCount);
+            }
             int tradeCount = orderMatchingService.runMatchingForAllActiveInstruments().size();
             if (tradeCount > 0) {
                 log.debug("Order matching scheduler executed {} trade(s).", tradeCount);
