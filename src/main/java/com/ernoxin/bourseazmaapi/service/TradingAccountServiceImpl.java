@@ -1,12 +1,16 @@
 package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.dto.*;
+import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.bourseazmaapi.model.*;
 import com.ernoxin.bourseazmaapi.repository.PortfolioHoldingRepository;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,19 +29,32 @@ public class TradingAccountServiceImpl implements TradingAccountService {
             "این سایت در حالت دمو است؛ قیمت سفارش باید در محدوده صف خرید یا فروش باشد و ثبت قیمت خارج از این بازه امکان‌پذیر نیست.";
     private static final String ORDER_BOOK_UNAVAILABLE_ERROR =
             "اطلاعات صف خرید و فروش در دسترس نیست؛ امکان ثبت سفارش وجود ندارد.";
+    private static final String MARKET_CLOSED_ERROR = "بازار بسته است و امکان ثبت سفارش وجود ندارد.";
     private final TradingOrderRepository tradingOrderRepository;
     private final PortfolioHoldingRepository portfolioHoldingRepository;
     private final UserRepository userRepository;
     private final OrderMatchingService orderMatchingService;
     private final MarketLiquidityService marketLiquidityService;
+    private final MarketStateService marketStateService;
 
     @Override
     @Transactional(readOnly = true)
-    public List<TradingOrderResponse> getOrders(Long userId) {
+    public PagedResponse<TradingOrderResponse> getOrders(Long userId, int page, int size, List<OrderStatus> statuses) {
         ensureUserExists(userId);
-        return tradingOrderRepository.findAllByUserIdOrderByOrderTimeDesc(userId).stream()
-                .map(this::toOrderResponse)
-                .toList();
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+        Page<TradingOrder> result = statuses == null || statuses.isEmpty()
+                ? tradingOrderRepository.findAllByUserIdOrderByOrderTimeDesc(userId, pageable)
+                : tradingOrderRepository.findAllByUserIdAndStatusInOrderByOrderTimeDesc(userId, statuses, pageable);
+        return new PagedResponse<>(
+                result.getContent().stream().map(this::toOrderResponse).toList(),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.hasNext()
+        );
     }
 
     @Override
@@ -56,10 +73,11 @@ public class TradingAccountServiceImpl implements TradingAccountService {
                 .orElseThrow(() -> new ResourceNotFoundException("کاربر یافت نشد."));
 
         String instrumentCode = request.getInstrumentCode().trim();
+        validateMarketOpen();
         validateOrderBookReady(instrumentCode);
 
-        BigDecimal livePrice = scaled(request.getLivePrice());
-        BigDecimal effectivePrice = resolveEffectivePrice(request, livePrice);
+        BigDecimal livePrice = resolveLivePrice(request, instrumentCode);
+        BigDecimal effectivePrice = resolveEffectivePrice(request, instrumentCode);
         long quantity = request.getQuantity();
         BigDecimal orderValue = effectivePrice.multiply(BigDecimal.valueOf(quantity));
 
@@ -161,14 +179,27 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         return new CancelOrderResult(toOrderResponse(order));
     }
 
-    private BigDecimal resolveEffectivePrice(CreateTradingOrderRequest request, BigDecimal livePrice) {
+    private BigDecimal resolveLivePrice(CreateTradingOrderRequest request, String instrumentCode) {
         if (request.getPriceType() == PriceType.MARKET) {
-            return livePrice;
+            return marketLiquidityService.resolveMarketOrderPrice(instrumentCode, request.getSide());
+        }
+        return scaled(request.getLivePrice());
+    }
+
+    private BigDecimal resolveEffectivePrice(CreateTradingOrderRequest request, String instrumentCode) {
+        if (request.getPriceType() == PriceType.MARKET) {
+            return marketLiquidityService.resolveMarketOrderPrice(instrumentCode, request.getSide());
         }
         if (request.getPrice() == null || request.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("برای قیمت دلخواه باید قیمت معتبری وارد شود.");
         }
         return scaled(request.getPrice());
+    }
+
+    private void validateMarketOpen() {
+        if (!marketStateService.isMarketOpen()) {
+            throw new IllegalArgumentException(MARKET_CLOSED_ERROR);
+        }
     }
 
     private void validateTrigger(CreateTradingOrderRequest request) {

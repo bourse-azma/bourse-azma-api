@@ -1,11 +1,13 @@
 package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.dto.*;
+import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
+import com.ernoxin.bourseazmaapi.model.OrderStatus;
 
 import java.util.List;
 
 public interface TradingAccountService {
-    List<TradingOrderResponse> getOrders(Long userId);
+    PagedResponse<TradingOrderResponse> getOrders(Long userId, int page, int size, List<OrderStatus> statuses);
 
     List<PortfolioHoldingResponse> getPortfolio(Long userId);
 

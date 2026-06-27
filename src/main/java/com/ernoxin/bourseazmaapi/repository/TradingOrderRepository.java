@@ -3,17 +3,27 @@ package com.ernoxin.bourseazmaapi.repository;
 import com.ernoxin.bourseazmaapi.model.OrderSide;
 import com.ernoxin.bourseazmaapi.model.OrderStatus;
 import com.ernoxin.bourseazmaapi.model.TradingOrder;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long> {
     List<TradingOrder> findAllByUserIdOrderByOrderTimeDesc(Long userId);
+
+    Page<TradingOrder> findAllByUserIdOrderByOrderTimeDesc(Long userId, Pageable pageable);
+
+    Page<TradingOrder> findAllByUserIdAndStatusInOrderByOrderTimeDesc(
+            Long userId, List<OrderStatus> statuses, Pageable pageable);
+
+    List<TradingOrder> findAllByStatusInAndExpiresAtBefore(List<OrderStatus> statuses, Instant expiresAt);
 
     Optional<TradingOrder> findByIdAndUserId(Long id, Long userId);
 

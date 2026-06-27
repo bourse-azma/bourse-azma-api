@@ -38,6 +38,9 @@ public class OrderMatchingService {
      */
     @Transactional
     public List<Trade> matchOrder(TradingOrder incomingOrder) {
+        if (isExpired(incomingOrder)) {
+            return List.of();
+        }
         List<Trade> trades = new ArrayList<>();
         if (incomingOrder.getSide() == OrderSide.BUY) {
             trades.addAll(matchBuyOrder(incomingOrder));
@@ -423,5 +426,10 @@ public class OrderMatchingService {
         } else if (order.getExecutedQuantity() > 0) {
             order.setStatus(OrderStatus.PARTIALLY_FILLED);
         }
+    }
+
+    private boolean isExpired(TradingOrder order) {
+        Instant expiresAt = order.getExpiresAt();
+        return expiresAt != null && expiresAt.isBefore(Instant.now());
     }
 }

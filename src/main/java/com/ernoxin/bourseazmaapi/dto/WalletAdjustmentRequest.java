@@ -1,5 +1,6 @@
 package com.ernoxin.bourseazmaapi.dto;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -16,9 +17,11 @@ public class WalletAdjustmentRequest {
     private Long userId;
 
     @NotBlank(message = "نوع عملیات نباید خالی باشد.")
-    private String type; // SET, ADD, SUBTRACT, PERCENT_ADD, PERCENT_SUBTRACT
+    private String type; // ADD, SUBTRACT
 
-    @NotNull(message = "مبلغ یا درصد نباید خالی باشد.")
+    @NotNull(message = "مبلغ نباید خالی باشد.")
+    @Positive(message = "مبلغ باید بزرگ‌تر از صفر باشد.")
+    @DecimalMin(value = "0.01", message = "مبلغ باید بزرگ‌تر از صفر باشد.")
     private BigDecimal value;
 
     private String description;

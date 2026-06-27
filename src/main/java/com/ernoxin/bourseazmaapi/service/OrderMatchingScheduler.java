@@ -13,6 +13,7 @@ public class OrderMatchingScheduler {
 
     private final OrderMatchingService orderMatchingService;
     private final OrderTriggerService orderTriggerService;
+    private final OrderExpirationService orderExpirationService;
     private final OrderMatchingProperties properties;
 
     @Scheduled(fixedDelayString = "${app.order-matching.poll-interval-ms:5000}")
@@ -22,6 +23,10 @@ public class OrderMatchingScheduler {
         }
 
         try {
+            int expiredCount = orderExpirationService.cancelExpiredOrders();
+            if (expiredCount > 0) {
+                log.debug("Order expiration service cancelled {} order(s).", expiredCount);
+            }
             int triggeredCount = orderTriggerService.evaluatePendingTriggers();
             if (triggeredCount > 0) {
                 log.debug("Order trigger service activated {} conditional order(s).", triggeredCount);

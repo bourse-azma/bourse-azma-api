@@ -2,6 +2,8 @@ package com.ernoxin.bourseazmaapi.controller;
 
 import com.ernoxin.bourseazmaapi.dto.*;
 import com.ernoxin.bourseazmaapi.dto.api.ApiResponse;
+import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
+import com.ernoxin.bourseazmaapi.model.OrderStatus;
 import com.ernoxin.bourseazmaapi.security.SecurityUtils;
 import com.ernoxin.bourseazmaapi.service.TradingAccountService;
 import jakarta.validation.Valid;
@@ -19,9 +21,13 @@ public class TradingAccountController {
     private final TradingAccountService tradingAccountService;
 
     @GetMapping("/orders")
-    public ApiResponse<List<TradingOrderResponse>> getOrders() {
+    public ApiResponse<PagedResponse<TradingOrderResponse>> getOrders(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) List<OrderStatus> statuses) {
         Long currentUserId = SecurityUtils.currentUserId();
-        return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد", tradingAccountService.getOrders(currentUserId));
+        return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد",
+                tradingAccountService.getOrders(currentUserId, page, size, statuses));
     }
 
     @PostMapping("/orders")

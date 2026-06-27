@@ -19,7 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.time.Instant;
 
@@ -52,11 +51,6 @@ public class WalletServiceImpl implements WalletService {
         BigDecimal value = request.getValue();
 
         switch (type) {
-            case "SET":
-                newBalance = value;
-                amount = newBalance.subtract(oldBalance);
-                autoDescription = String.format("تغییر موجودی از %s به %s ریال", formatAmount(oldBalance), formatAmount(newBalance));
-                break;
             case "ADD":
                 amount = value;
                 newBalance = oldBalance.add(amount);
@@ -66,18 +60,6 @@ public class WalletServiceImpl implements WalletService {
                 amount = value.negate();
                 newBalance = oldBalance.add(amount);
                 autoDescription = String.format("کاهش موجودی به میزان %s ریال", formatAmount(value));
-                break;
-            case "PERCENT_ADD":
-                BigDecimal addAmount = oldBalance.multiply(value).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
-                amount = addAmount;
-                newBalance = oldBalance.add(amount);
-                autoDescription = String.format("افزایش موجودی به میزان %s درصد (مبلغ %s ریال)", value.toString(), formatAmount(addAmount));
-                break;
-            case "PERCENT_SUBTRACT":
-                BigDecimal subAmount = oldBalance.multiply(value).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
-                amount = subAmount.negate();
-                newBalance = oldBalance.add(amount);
-                autoDescription = String.format("کاهش موجودی به میزان %s درصد (مبلغ %s ریال)", value.toString(), formatAmount(subAmount));
                 break;
             default:
                 throw new IllegalArgumentException("نوع عملیات نامعتبر است: " + type);

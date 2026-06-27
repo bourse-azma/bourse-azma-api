@@ -1,6 +1,7 @@
 package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.client.TsetmcMarketClient;
+import com.ernoxin.bourseazmaapi.model.OrderSide;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -44,6 +45,23 @@ public class MarketLiquidityService {
             return false;
         }
         return getBidPriceRange(normalizedCode).isPresent() && getAskPriceRange(normalizedCode).isPresent();
+    }
+
+    public BigDecimal resolveMarketOrderPrice(String instrumentCode, OrderSide side) {
+        String normalizedCode = instrumentCode == null ? "" : instrumentCode.trim();
+        if (normalizedCode.isEmpty()) {
+            throw new IllegalArgumentException("کد نماد معتبر نیست.");
+        }
+        if (side == OrderSide.BUY) {
+            return getAskPriceRange(normalizedCode)
+                    .map(OrderBookPriceRange::max)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "اطلاعات صف خرید و فروش در دسترس نیست؛ امکان ثبت سفارش وجود ندارد."));
+        }
+        return getBidPriceRange(normalizedCode)
+                .map(OrderBookPriceRange::min)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "اطلاعات صف خرید و فروش در دسترس نیست؛ امکان ثبت سفارش وجود ندارد."));
     }
 
     public java.util.Optional<BigDecimal> getReferencePrice(String instrumentCode) {
