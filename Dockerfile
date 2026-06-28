@@ -13,11 +13,11 @@ RUN --mount=type=cache,target=/root/.m2 \
     cp "${JAR_FILE}" /workspace/app.jar && \
     java -Djarmode=tools -jar /workspace/app.jar extract --layers --launcher --destination /workspace/extracted && \
     "${JAVA_HOME}/bin/jlink" \
-    --add-modules java.base,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.security.jgss,java.sql,java.xml,jdk.charsets,jdk.crypto.ec,jdk.unsupported \
+    --add-modules java.base,java.desktop,java.instrument,java.logging,java.management,java.naming,java.net.http,java.security.jgss,java.sql,java.xml,jdk.charsets,jdk.crypto.ec,jdk.crypto.cryptoki,jdk.management,jdk.net,jdk.unsupported,jdk.zipfs \
     --strip-debug \
     --no-man-pages \
     --no-header-files \
-    --compress=2 \
+    --compress=zip-6 \
     --output /opt/java-minimal
 
 FROM alpine:3.21
@@ -26,7 +26,22 @@ WORKDIR /app
 RUN addgroup -S app && adduser -S -G app -u 10001 app && \
     apk add --no-cache libstdc++
 
-ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+ENV JAVA_TOOL_OPTIONS="\
+-XX:+UseG1GC \
+-XX:MaxGCPauseMillis=200 \
+-XX:+UseStringDeduplication \
+-XX:+UseContainerSupport \
+-XX:InitialRAMPercentage=50.0 \
+-XX:MaxRAMPercentage=75.0 \
+-XX:MaxMetaspaceSize=256m \
+-XX:+AlwaysPreTouch \
+-XX:+DisableExplicitGC \
+-XX:+ExitOnOutOfMemoryError \
+-XX:+HeapDumpOnOutOfMemoryError \
+-XX:HeapDumpPath=/tmp \
+-XX:+OptimizeStringConcat \
+-Djava.security.egd=file:/dev/./urandom \
+-Dfile.encoding=UTF-8"
 
 COPY --from=build /opt/java-minimal /opt/java
 COPY --from=build /workspace/extracted/dependencies/ ./

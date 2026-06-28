@@ -17,7 +17,24 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class MarketLiquidityService {
 
+    private static final long CACHE_TTL_MS = 2_000;
     private final TsetmcMarketClient tsetmcMarketClient;
+    private final java.util.concurrent.ConcurrentHashMap<String, CachedPayload> bestLimitsCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private Optional<com.fasterxml.jackson.databind.JsonNode> getCachedBestLimits(String instrumentCode) {
+        CachedPayload cached = bestLimitsCache.get(instrumentCode);
+        long now = System.currentTimeMillis();
+        if (cached != null && (now - cached.timestamp()) < CACHE_TTL_MS) {
+            return cached.payload();
+        }
+        Optional<com.fasterxml.jackson.databind.JsonNode> fresh = tsetmcMarketClient.getBestLimits(instrumentCode);
+        bestLimitsCache.put(instrumentCode, new CachedPayload(fresh, now));
+        if (bestLimitsCache.size() > 200) {
+            bestLimitsCache.entrySet().removeIf(e -> (now - e.getValue().timestamp()) >= CACHE_TTL_MS);
+        }
+        return fresh;
+    }
 
     public List<MarketLiquidityLevel> getAskLevels(String instrumentCode) {
         return parseLevels(instrumentCode, Side.ASK).stream()
@@ -102,7 +119,7 @@ public class MarketLiquidityService {
     }
 
     private List<MarketLiquidityLevel> parseLevels(String instrumentCode, Side side) {
-        Optional<JsonNode> payload = tsetmcMarketClient.getBestLimits(instrumentCode);
+        Optional<JsonNode> payload = getCachedBestLimits(instrumentCode);
         if (payload.isEmpty()) {
             return List.of();
         }
@@ -153,5 +170,8 @@ public class MarketLiquidityService {
     private enum Side {
         ASK,
         BID
+    }
+
+    private record CachedPayload(Optional<com.fasterxml.jackson.databind.JsonNode> payload, long timestamp) {
     }
 }
