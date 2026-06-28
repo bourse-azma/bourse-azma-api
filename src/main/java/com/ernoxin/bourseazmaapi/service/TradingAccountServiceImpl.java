@@ -129,20 +129,17 @@ public class TradingAccountServiceImpl implements TradingAccountService {
             saved = tradingOrderRepository.findById(saved.getId()).orElse(saved);
         }
 
-        // For MARKET orders: if not fully filled, cancel remaining
+        // For MARKET orders: if not fully filled, cancel remaining quantity explicitly.
         if (!isConditional && request.getPriceType() == PriceType.MARKET
                 && saved.getRemainingQuantity() > 0 && saved.getStatus() != OrderStatus.COMPLETED) {
+            saved.setRemainingQuantity(0L);
+            saved.setCancelledAt(Instant.now());
             if (saved.getExecutedQuantity() > 0) {
                 saved.setStatus(OrderStatus.PARTIALLY_FILLED);
+            } else {
+                saved.setStatus(OrderStatus.FAILED);
             }
-            // Cancel remaining for market orders that couldn't be fully filled
-            saved.setRemainingQuantity(0L);
-            saved.setStatus(saved.getExecutedQuantity() > 0 ? OrderStatus.COMPLETED : OrderStatus.FAILED);
-            saved.setCancelledAt(Instant.now());
             tradingOrderRepository.save(saved);
-
-            // Release reserved cash/holdings for the unfilled portion
-            // (The matching engine already handled the filled portion)
         }
 
         List<TradeResponse> tradeResponses = trades.stream()

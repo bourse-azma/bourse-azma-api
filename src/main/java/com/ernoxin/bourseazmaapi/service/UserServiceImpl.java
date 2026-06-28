@@ -2,6 +2,7 @@ package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.dto.UserCreateRequest;
 import com.ernoxin.bourseazmaapi.dto.UserResponse;
+import com.ernoxin.bourseazmaapi.dto.UserSelfUpdateRequest;
 import com.ernoxin.bourseazmaapi.dto.UserUpdateRequest;
 import com.ernoxin.bourseazmaapi.dto.auth.RegisterRequest;
 import com.ernoxin.bourseazmaapi.exception.DuplicateResourceException;
@@ -99,6 +100,11 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public UserResponse getCurrentUser() {
+        return userMapper.toDto(findById(SecurityUtils.currentUserId()));
+    }
+
+    @Override
     public List<UserResponse> getAll() {
         return userMapper.toDtoList(userRepository.findAll());
     }
@@ -108,10 +114,29 @@ public class UserServiceImpl implements UserService {
         validateOwnerOrAdmin(request.getId());
         normalizeRequestForPersistence(request);
         User user = findById(request.getId());
-        validateUniqueFieldsForUpdate(request);
+        validateUniqueFieldsForUpdate(request.getId(), request.getUsername(), request.getNationalCode(),
+                request.getPhoneNumber(), request.getEmail());
         userMapper.updateEntity(request, user);
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             validatePasswordChange(user, request);
+            user.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
+        return userMapper.toDto(userRepository.save(user));
+    }
+
+    @Override
+    public UserResponse updateCurrentUser(UserSelfUpdateRequest request) {
+        Long userId = SecurityUtils.currentUserId();
+        normalizeRequestForPersistence(request);
+        User user = findById(userId);
+        validateUniqueFieldsForUpdate(userId, request.getUsername(), request.getNationalCode(),
+                request.getPhoneNumber(), request.getEmail());
+        userMapper.updateEntity(request, user);
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            UserUpdateRequest passwordRequest = new UserUpdateRequest();
+            passwordRequest.setCurrentPassword(request.getCurrentPassword());
+            passwordRequest.setPassword(request.getPassword());
+            validatePasswordChange(user, passwordRequest);
             user.setPassword(passwordEncoder.encode(request.getPassword()));
         }
         return userMapper.toDto(userRepository.save(user));
@@ -181,19 +206,23 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    private void validateUniqueFieldsForUpdate(UserUpdateRequest request) {
-        if (userRepository.existsByUsernameAndIdNot(request.getUsername(), request.getId())) {
+    private void validateUniqueFieldsForUpdate(
+            Long userId,
+            String username,
+            String nationalCode,
+            String phoneNumber,
+            String email
+    ) {
+        if (userRepository.existsByUsernameAndIdNot(username, userId)) {
             throw new DuplicateResourceException("نام کاربری واردشده قبلا ثبت شده است.");
         }
-        if (request.getNationalCode() != null
-                && userRepository.existsByNationalCodeAndIdNot(request.getNationalCode(), request.getId())) {
+        if (nationalCode != null && userRepository.existsByNationalCodeAndIdNot(nationalCode, userId)) {
             throw new DuplicateResourceException("کد ملی واردشده قبلا ثبت شده است.");
         }
-        if (request.getPhoneNumber() != null
-                && userRepository.existsByPhoneNumberAndIdNot(request.getPhoneNumber(), request.getId())) {
+        if (phoneNumber != null && userRepository.existsByPhoneNumberAndIdNot(phoneNumber, userId)) {
             throw new DuplicateResourceException("شماره موبایل واردشده قبلا ثبت شده است.");
         }
-        if (request.getEmail() != null && userRepository.existsByEmailAndIdNot(request.getEmail(), request.getId())) {
+        if (email != null && userRepository.existsByEmailAndIdNot(email, userId)) {
             throw new DuplicateResourceException("ایمیل واردشده قبلا ثبت شده است.");
         }
     }
@@ -208,6 +237,15 @@ public class UserServiceImpl implements UserService {
     }
 
     private void normalizeRequestForPersistence(UserUpdateRequest request) {
+        request.setUsername(normalizeUsername(request.getUsername()));
+        request.setFirstName(normalizeRequired(request.getFirstName()));
+        request.setLastName(normalizeRequired(request.getLastName()));
+        request.setEmail(normalizeEmail(request.getEmail()));
+        request.setNationalCode(normalizeOptional(request.getNationalCode()));
+        request.setPhoneNumber(normalizeOptional(request.getPhoneNumber()));
+    }
+
+    private void normalizeRequestForPersistence(UserSelfUpdateRequest request) {
         request.setUsername(normalizeUsername(request.getUsername()));
         request.setFirstName(normalizeRequired(request.getFirstName()));
         request.setLastName(normalizeRequired(request.getLastName()));

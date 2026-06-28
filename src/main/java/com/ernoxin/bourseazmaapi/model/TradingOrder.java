@@ -84,6 +84,7 @@ public class TradingOrder extends BaseEntity<Long> {
     }
 
     public boolean isActive() {
-        return status == OrderStatus.REQUESTED || status == OrderStatus.PARTIALLY_FILLED;
+        return remainingQuantity > 0
+                && (status == OrderStatus.REQUESTED || status == OrderStatus.PARTIALLY_FILLED);
     }
 }
