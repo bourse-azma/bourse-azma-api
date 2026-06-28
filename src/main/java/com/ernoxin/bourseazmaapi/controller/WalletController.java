@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.controller;
 import com.ernoxin.bourseazmaapi.dto.UserResponse;
 import com.ernoxin.bourseazmaapi.dto.WalletAdjustmentRequest;
 import com.ernoxin.bourseazmaapi.dto.WalletTransactionResponse;
+import com.ernoxin.bourseazmaapi.dto.WalletTransactionSummaryResponse;
 import com.ernoxin.bourseazmaapi.dto.api.ApiResponse;
 import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.model.UserRole;
@@ -40,6 +41,17 @@ public class WalletController {
                 HttpStatus.OK,
                 "عملیات با موفقیت انجام شد",
                 walletService.getTransactions(currentUserId, page, size)
+        );
+    }
+
+    @GetMapping("/transactions/summary")
+    @PreAuthorize("isAuthenticated()")
+    public ApiResponse<WalletTransactionSummaryResponse> getTransactionSummary() {
+        Long currentUserId = SecurityUtils.currentUserId();
+        return ApiResponse.of(
+                HttpStatus.OK,
+                "عملیات با موفقیت انجام شد",
+                walletService.getTransactionSummary(currentUserId)
         );
     }
 

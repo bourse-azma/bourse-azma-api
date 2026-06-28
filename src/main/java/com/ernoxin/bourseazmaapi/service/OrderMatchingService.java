@@ -253,18 +253,18 @@ public class OrderMatchingService {
         }
 
         if (!sellerIsMarketMaker) {
+            User seller = userRepository.findByIdForUpdate(sellOrder.getUser().getId())
+                    .orElse(null);
+            if (seller == null) {
+                failSellOrder(sellOrder, "حساب فروشنده یافت نشد.");
+                return null;
+            }
             long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCode(
                     sellOrder.getUser().getId(),
                     sellOrder.getInstrumentCode()
             ).stream().mapToLong(PortfolioHolding::getQuantity).sum();
             if (available < quantity) {
                 failSellOrder(sellOrder, "موجودی کافی برای اجرای سفارش فروش وجود ندارد.");
-                return null;
-            }
-            User seller = userRepository.findByIdForUpdate(sellOrder.getUser().getId())
-                    .orElse(null);
-            if (seller == null) {
-                failSellOrder(sellOrder, "حساب فروشنده یافت نشد.");
                 return null;
             }
             sellOrder.setUser(seller);
@@ -390,6 +390,11 @@ public class OrderMatchingService {
                 portfolioHoldingRepository.save(holding);
                 remaining = 0;
             }
+        }
+        if (remaining > 0) {
+            throw new IllegalStateException(
+                    "موجودی پرتفوی برای تکمیل فروش کافی نیست (userId=" + userId
+                            + ", instrumentCode=" + instrumentCode + ").");
         }
     }
 

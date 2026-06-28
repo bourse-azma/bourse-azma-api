@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.service;
 import com.ernoxin.bourseazmaapi.dto.UserResponse;
 import com.ernoxin.bourseazmaapi.dto.WalletAdjustmentRequest;
 import com.ernoxin.bourseazmaapi.dto.WalletTransactionResponse;
+import com.ernoxin.bourseazmaapi.dto.WalletTransactionSummaryResponse;
 import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.bourseazmaapi.mapper.UserMapper;
@@ -11,6 +12,7 @@ import com.ernoxin.bourseazmaapi.model.User;
 import com.ernoxin.bourseazmaapi.model.WalletTransaction;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.repository.WalletTransactionRepository;
+import com.ernoxin.bourseazmaapi.repository.WalletTransactionSummary;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -100,6 +102,20 @@ public class WalletServiceImpl implements WalletService {
                 result.getTotalElements(),
                 result.getTotalPages(),
                 result.hasNext()
+        );
+    }
+
+    @Override
+    public WalletTransactionSummaryResponse getTransactionSummary(Long userId) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("کاربر مورد نظر یافت نشد.");
+        }
+        WalletTransactionSummary summary = walletTransactionRepository.summarizeByUserId(userId);
+        return new WalletTransactionSummaryResponse(
+                summary.getTotalCount(),
+                summary.getTotalNet(),
+                summary.getInflowCount(),
+                summary.getOutflowCount()
         );
     }
 }

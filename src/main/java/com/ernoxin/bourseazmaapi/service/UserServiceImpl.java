@@ -8,9 +8,8 @@ import com.ernoxin.bourseazmaapi.exception.DuplicateResourceException;
 import com.ernoxin.bourseazmaapi.exception.InvalidCurrentPasswordException;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.bourseazmaapi.mapper.UserMapper;
-import com.ernoxin.bourseazmaapi.model.User;
-import com.ernoxin.bourseazmaapi.model.UserRole;
-import com.ernoxin.bourseazmaapi.model.WalletTransaction;
+import com.ernoxin.bourseazmaapi.model.*;
+import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.repository.WalletTransactionRepository;
 import com.ernoxin.bourseazmaapi.security.SecurityUtils;
@@ -22,15 +21,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
+    private static final List<OrderStatus> CANCELLABLE_ORDER_STATUSES = List.of(
+            OrderStatus.REQUESTED,
+            OrderStatus.PARTIALLY_FILLED,
+            OrderStatus.TRIGGER_PENDING
+    );
     private final UserRepository userRepository;
     private final WalletTransactionRepository walletTransactionRepository;
+    private final TradingOrderRepository tradingOrderRepository;
+    private final OrderMatchingService orderMatchingService;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
@@ -123,10 +131,34 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public void delete(Long id) {
         validateOwnerOrAdmin(id);
         User user = findById(id);
+        cancelActiveOrdersForUser(id);
         userRepository.delete(user);
+    }
+
+    private void cancelActiveOrdersForUser(Long userId) {
+        List<TradingOrder> activeOrders =
+                tradingOrderRepository.findAllByUserIdAndStatusIn(userId, CANCELLABLE_ORDER_STATUSES);
+        if (activeOrders.isEmpty()) {
+            return;
+        }
+
+        Instant now = Instant.now();
+        Set<String> affectedInstruments = new HashSet<>();
+        for (TradingOrder order : activeOrders) {
+            order.setStatus(OrderStatus.CANCELLED);
+            order.setCancelledAt(now);
+            order.setRemainingQuantity(0L);
+            affectedInstruments.add(order.getInstrumentCode());
+        }
+        tradingOrderRepository.saveAll(activeOrders);
+
+        for (String instrumentCode : affectedInstruments) {
+            orderMatchingService.runMatchingForInstrument(instrumentCode);
+        }
     }
 
     private User findById(Long id) {

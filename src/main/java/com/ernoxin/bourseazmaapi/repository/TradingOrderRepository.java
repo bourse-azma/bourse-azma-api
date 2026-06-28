@@ -23,6 +23,8 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
     Page<TradingOrder> findAllByUserIdAndStatusInOrderByOrderTimeDesc(
             Long userId, List<OrderStatus> statuses, Pageable pageable);
 
+    List<TradingOrder> findAllByUserIdAndStatusIn(Long userId, List<OrderStatus> statuses);
+
     List<TradingOrder> findAllByStatusInAndExpiresAtBefore(List<OrderStatus> statuses, Instant expiresAt);
 
     Optional<TradingOrder> findByIdAndUserId(Long id, Long userId);
@@ -67,6 +69,21 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
             "WHERE o.user.id = :userId AND o.side = 'BUY' " +
             "AND o.status IN ('REQUESTED', 'PARTIALLY_FILLED', 'TRIGGER_PENDING')")
     java.math.BigDecimal sumReservedBuyValue(@Param("userId") Long userId);
+
+    @Query("SELECT COALESCE(SUM(o.orderPrice * o.remainingQuantity), 0) FROM TradingOrder o " +
+            "WHERE o.user.id = :userId AND o.side = 'BUY' " +
+            "AND o.status IN ('REQUESTED', 'PARTIALLY_FILLED', 'TRIGGER_PENDING') " +
+            "AND o.id <> :excludeOrderId")
+    java.math.BigDecimal sumReservedBuyValueExcluding(@Param("userId") Long userId,
+                                                      @Param("excludeOrderId") Long excludeOrderId);
+
+    @Query("SELECT COALESCE(SUM(o.remainingQuantity), 0) FROM TradingOrder o " +
+            "WHERE o.user.id = :userId AND o.instrumentCode = :instrumentCode " +
+            "AND o.side = 'SELL' AND o.status IN ('REQUESTED', 'PARTIALLY_FILLED', 'TRIGGER_PENDING') " +
+            "AND o.id <> :excludeOrderId")
+    long sumReservedSellQuantityExcluding(@Param("userId") Long userId,
+                                          @Param("instrumentCode") String instrumentCode,
+                                          @Param("excludeOrderId") Long excludeOrderId);
 
     @Query("SELECT DISTINCT o.instrumentCode FROM TradingOrder o " +
             "WHERE o.status IN ('REQUESTED', 'PARTIALLY_FILLED')")

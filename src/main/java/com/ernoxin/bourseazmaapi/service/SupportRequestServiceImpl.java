@@ -254,21 +254,16 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         SupportRequest supportRequest = supportRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
 
-        SupportRequestStatus newStatus = request.getStatus();
+        SupportRequestStatus newStatus = normalizeIncomingStatus(request.getStatus());
         SupportRequestStatus currentStatus = normalizeStatus(supportRequest.getStatus());
-        if (newStatus == SupportRequestStatus.RESOLVED) {
-            throw new IllegalArgumentException("وضعیت «بسته‌شده» تنها گزینه پایان کار تیکت است.");
-        }
         validateStatusTransition(currentStatus, newStatus);
-        supportRequest.setStatus(newStatus);
-        Instant now = Instant.now();
-        supportRequest.setUpdatedAt(now);
+
         if (newStatus == SupportRequestStatus.CLOSED) {
-            supportRequest.setClosedAt(now);
-            supportRequest.setClosedBy(SupportRequestClosedBy.ADMIN);
+            applyClosedStatus(supportRequest, SupportRequestClosedBy.ADMIN);
         } else {
-            supportRequest.setClosedAt(null);
-            supportRequest.setClosedBy(null);
+            supportRequest.setStatus(newStatus);
+            supportRequest.setUpdatedAt(Instant.now());
+            clearClosedMetadata(supportRequest);
         }
 
         SupportRequest saved = supportRequestRepository.save(supportRequest);
@@ -536,15 +531,31 @@ public class SupportRequestServiceImpl implements SupportRequestService {
             throw new IllegalArgumentException("این تیکت قبلا بسته شده است.");
         }
 
+        applyClosedStatus(supportRequest, closedBy);
+
+        SupportRequest saved = supportRequestRepository.save(supportRequest);
+        Map<Long, MessageStats> statsById = loadMessageStats(List.of(saved.getId()));
+        return toSummaryDto(saved, includeUser, statsFor(saved, statsById), false);
+    }
+
+    private void applyClosedStatus(SupportRequest supportRequest, SupportRequestClosedBy closedBy) {
         Instant now = Instant.now();
         supportRequest.setStatus(SupportRequestStatus.CLOSED);
         supportRequest.setUpdatedAt(now);
         supportRequest.setClosedAt(now);
         supportRequest.setClosedBy(closedBy);
+    }
 
-        SupportRequest saved = supportRequestRepository.save(supportRequest);
-        Map<Long, MessageStats> statsById = loadMessageStats(List.of(saved.getId()));
-        return toSummaryDto(saved, includeUser, statsFor(saved, statsById), false);
+    private void clearClosedMetadata(SupportRequest supportRequest) {
+        supportRequest.setClosedAt(null);
+        supportRequest.setClosedBy(null);
+    }
+
+    private SupportRequestStatus normalizeIncomingStatus(SupportRequestStatus status) {
+        if (status == null) {
+            throw new IllegalArgumentException("وضعیت تیکت مشخص نشده است.");
+        }
+        return status == SupportRequestStatus.RESOLVED ? SupportRequestStatus.CLOSED : status;
     }
 
     private boolean isRateableStatus(SupportRequestStatus status) {

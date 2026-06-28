@@ -16,7 +16,7 @@ public class AuthCookieService {
 
     public static final String ACCESS_TOKEN_COOKIE = "bourse_azma_access_token";
 
-    @Value("${app.security.cookie.secure:false}")
+    @Value("${app.security.cookie.secure:true}")
     private boolean secureCookie;
 
     public void setAccessTokenCookie(HttpServletResponse response, String token, Instant expiresAt, boolean persistent) {
