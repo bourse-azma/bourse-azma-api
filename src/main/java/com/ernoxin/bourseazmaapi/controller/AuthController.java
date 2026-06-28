@@ -6,6 +6,7 @@ import com.ernoxin.bourseazmaapi.dto.auth.LoginRequest;
 import com.ernoxin.bourseazmaapi.dto.auth.RegisterRequest;
 import com.ernoxin.bourseazmaapi.security.AuthCookieService;
 import com.ernoxin.bourseazmaapi.service.AuthService;
+import com.ernoxin.bourseazmaapi.util.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -41,9 +42,10 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<AuthTokenResponse> login(
             @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpRequest,
             HttpServletResponse response
     ) {
-        AuthTokenResponse tokenResponse = authService.login(request);
+        AuthTokenResponse tokenResponse = authService.login(request, ClientIpResolver.resolve(httpRequest));
         authCookieService.setAccessTokenCookie(
                 response,
                 tokenResponse.accessToken(),

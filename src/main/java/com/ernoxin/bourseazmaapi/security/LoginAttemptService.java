@@ -14,15 +14,15 @@ public class LoginAttemptService {
     private final LoginBruteForceProperties properties;
     private final LoginAttemptStore loginAttemptStore;
 
-    public void ensureLoginAllowed(String identifier) {
-        String key = trackingKey(identifier);
+    public void ensureLoginAllowed(String clientIp) {
+        String key = trackingKey(clientIp);
         if (loginAttemptStore.isLocked(key)) {
             throw new LoginBruteForceBlockedException(loginAttemptStore.getRemainingLockoutSeconds(key));
         }
     }
 
-    public void recordFailedLogin(String identifier) {
-        String key = trackingKey(identifier);
+    public void recordFailedLogin(String clientIp) {
+        String key = trackingKey(clientIp);
         loginAttemptStore.recordFailedAttempt(key, properties.getAttemptWindowSeconds());
         int attempts = loginAttemptStore.getFailedAttempts(key);
         if (attempts >= properties.getMaxAttempts()) {
@@ -30,12 +30,14 @@ public class LoginAttemptService {
         }
     }
 
-    public void clearFailedAttempts(String identifier) {
-        loginAttemptStore.clear(trackingKey(identifier));
+    public void clearFailedAttempts(String clientIp) {
+        loginAttemptStore.clear(trackingKey(clientIp));
     }
 
-    private String trackingKey(String identifier) {
-        String normalized = identifier == null ? "" : identifier.trim().toLowerCase(Locale.ROOT);
-        return properties.getKeyPrefix() + ":id:" + normalized;
+    private String trackingKey(String clientIp) {
+        String normalized = clientIp == null || clientIp.isBlank()
+                ? "unknown"
+                : clientIp.trim().toLowerCase(Locale.ROOT);
+        return properties.getKeyPrefix() + ":ip:" + normalized;
     }
 }

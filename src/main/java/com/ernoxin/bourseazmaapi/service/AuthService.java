@@ -7,7 +7,7 @@ import com.ernoxin.bourseazmaapi.dto.auth.RegisterRequest;
 public interface AuthService {
     AuthTokenResponse register(RegisterRequest request);
 
-    AuthTokenResponse login(LoginRequest request);
+    AuthTokenResponse login(LoginRequest request, String clientIp);
 
     void logout(String bearerToken);
 }

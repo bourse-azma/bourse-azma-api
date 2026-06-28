@@ -192,6 +192,8 @@ public class OrderMatchingService {
             Trade trade = executeTrade(buyOrder, marketSellOrder, matchQuantity, level.price());
             if (trade != null) {
                 trades.add(trade);
+            } else {
+                marketMakerService.cancelUnmatchedCounterOrder(marketSellOrder);
             }
         }
 
@@ -224,6 +226,8 @@ public class OrderMatchingService {
             Trade trade = executeTrade(marketBuyOrder, sellOrder, matchQuantity, level.price());
             if (trade != null) {
                 trades.add(trade);
+            } else {
+                marketMakerService.cancelUnmatchedCounterOrder(marketBuyOrder);
             }
         }
 

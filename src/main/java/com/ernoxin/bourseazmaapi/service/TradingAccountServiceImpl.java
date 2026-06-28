@@ -36,6 +36,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private final OrderMatchingService orderMatchingService;
     private final MarketLiquidityService marketLiquidityService;
     private final MarketStateService marketStateService;
+    private final TradingSessionExpiryService tradingSessionExpiryService;
 
     @Override
     @Transactional(readOnly = true)
@@ -255,7 +256,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private Instant resolveExpiry(OrderValidity validity) {
         Instant now = Instant.now();
         return switch (validity) {
-            case TODAY, DAY -> now.plus(Duration.ofDays(1));
+            case TODAY, DAY -> tradingSessionExpiryService.endOfCurrentTradingSession(now);
             case DAYS_30 -> now.plus(Duration.ofDays(30));
             case DAYS_90 -> now.plus(Duration.ofDays(90));
         };

@@ -38,24 +38,24 @@ public class AuthServiceImpl implements AuthService {
         LoginRequest loginRequest = new LoginRequest();
         loginRequest.setIdentifier(request.getUsername());
         loginRequest.setPassword(request.getPassword());
-        return login(loginRequest);
+        return login(loginRequest, "unknown");
     }
 
     @Override
     @Transactional
-    public AuthTokenResponse login(LoginRequest request) {
+    public AuthTokenResponse login(LoginRequest request, String clientIp) {
         String normalizedIdentifier = request.getIdentifier().trim().toLowerCase(Locale.ROOT);
-        loginAttemptService.ensureLoginAllowed(normalizedIdentifier);
+        loginAttemptService.ensureLoginAllowed(clientIp);
 
         User user = userRepository.findByUsernameOrEmail(normalizedIdentifier, normalizedIdentifier)
                 .orElse(null);
 
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            loginAttemptService.recordFailedLogin(normalizedIdentifier);
+            loginAttemptService.recordFailedLogin(clientIp);
             throw new InvalidCredentialsException();
         }
 
-        loginAttemptService.clearFailedAttempts(normalizedIdentifier);
+        loginAttemptService.clearFailedAttempts(clientIp);
 
         AppUserPrincipal principal = AppUserPrincipal.from(user);
         String accessToken = jwtTokenService.generateAccessToken(principal);

@@ -48,8 +48,23 @@ public class MarketMakerService {
         counterOrder.setOrderTime(now);
         counterOrder.setStatus(OrderStatus.REQUESTED);
         counterOrder.setValidity(OrderValidity.TODAY);
-        counterOrder.setExpiresAt(now);
+        counterOrder.setExpiresAt(null);
 
         return tradingOrderRepository.save(counterOrder);
+    }
+
+    public void cancelUnmatchedCounterOrder(TradingOrder counterOrder) {
+        if (counterOrder == null || counterOrder.getId() == null) {
+            return;
+        }
+        if (counterOrder.getStatus() == OrderStatus.COMPLETED
+                || counterOrder.getStatus() == OrderStatus.FAILED
+                || counterOrder.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+        counterOrder.setStatus(OrderStatus.CANCELLED);
+        counterOrder.setRemainingQuantity(0L);
+        counterOrder.setCancelledAt(Instant.now());
+        tradingOrderRepository.save(counterOrder);
     }
 }
