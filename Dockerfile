@@ -1,5 +1,8 @@
 FROM maven:3.9.9-eclipse-temurin-21-alpine AS build
+ARG MAVEN_BUILD_HEAP_MB=384
 WORKDIR /workspace
+
+ENV MAVEN_OPTS="-Xmx${MAVEN_BUILD_HEAP_MB}m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
 
 COPY bourse-azma-api/pom.xml ./
 RUN --mount=type=cache,target=/root/.m2 \
@@ -24,21 +27,18 @@ FROM alpine:3.21
 WORKDIR /app
 
 RUN addgroup -S app && adduser -S -G app -u 10001 app && \
-    apk add --no-cache libstdc++
+    apk add --no-cache libstdc++ tini netcat-openbsd
 
 ENV JAVA_TOOL_OPTIONS="\
--XX:+UseG1GC \
--XX:MaxGCPauseMillis=200 \
--XX:+UseStringDeduplication \
+-XX:+UseSerialGC \
 -XX:+UseContainerSupport \
--XX:InitialRAMPercentage=25.0 \
--XX:MaxRAMPercentage=65.0 \
--XX:MaxMetaspaceSize=192m \
--XX:MaxDirectMemorySize=64m \
--XX:+DisableExplicitGC \
+-Xms48m \
+-Xmx112m \
+-Xss256k \
+-XX:MaxMetaspaceSize=128m \
+-XX:MaxDirectMemorySize=16m \
+-XX:TieredStopAtLevel=1 \
 -XX:+ExitOnOutOfMemoryError \
--XX:+HeapDumpOnOutOfMemoryError \
--XX:HeapDumpPath=/tmp \
 -Djava.security.egd=file:/dev/./urandom \
 -Dfile.encoding=UTF-8"
 
@@ -53,4 +53,4 @@ EXPOSE 9003
 
 USER 10001:10001
 
-ENTRYPOINT ["/opt/java/bin/java", "org.springframework.boot.loader.launch.JarLauncher"]
+ENTRYPOINT ["/sbin/tini", "--", "/opt/java/bin/java", "org.springframework.boot.loader.launch.JarLauncher"]
