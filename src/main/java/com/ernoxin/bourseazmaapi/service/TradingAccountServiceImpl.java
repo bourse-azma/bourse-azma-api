@@ -37,6 +37,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private final MarketLiquidityService marketLiquidityService;
     private final MarketStateService marketStateService;
     private final TradingSessionExpiryService tradingSessionExpiryService;
+    private final TradingAccountResponseMapper responseMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -49,7 +50,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
                 ? tradingOrderRepository.findAllByUserIdOrderByOrderTimeDesc(userId, pageable)
                 : tradingOrderRepository.findAllByUserIdAndStatusInOrderByOrderTimeDesc(userId, statuses, pageable);
         return new PagedResponse<>(
-                result.getContent().stream().map(this::toOrderResponse).toList(),
+                result.getContent().stream().map(responseMapper::toOrderResponse).toList(),
                 result.getNumber(),
                 result.getSize(),
                 result.getTotalElements(),
@@ -63,7 +64,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     public List<PortfolioHoldingResponse> getPortfolio(Long userId) {
         ensureUserExists(userId);
         return portfolioHoldingRepository.findAllByUserIdOrderByAcquiredAtDesc(userId).stream()
-                .map(this::toPortfolioResponse)
+                .map(responseMapper::toPortfolioResponse)
                 .toList();
     }
 
@@ -146,7 +147,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
                 .map(t -> new TradeResponse(t.getId(), t.getQuantity(), t.getPrice(), t.getValue(), t.getExecutedAt()))
                 .toList();
 
-        return new CreateOrderResult(toOrderResponse(saved), tradeResponses);
+        return new CreateOrderResult(responseMapper.toOrderResponse(saved), tradeResponses);
     }
 
     @Override
@@ -174,7 +175,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         // After cancellation, re-run matching in case freed liquidity enables other matches
         orderMatchingService.runMatchingForInstrument(order.getInstrumentCode());
 
-        return new CancelOrderResult(toOrderResponse(order));
+        return new CancelOrderResult(responseMapper.toOrderResponse(order));
     }
 
     private BigDecimal resolveLivePrice(CreateTradingOrderRequest request, String instrumentCode) {
@@ -269,75 +270,4 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         }
     }
 
-    TradingOrderResponse toOrderResponse(TradingOrder order) {
-        BigDecimal orderValue = order.getOrderPrice().multiply(BigDecimal.valueOf(order.getQuantity()));
-        return new TradingOrderResponse(
-                order.getId(),
-                order.getSide(),
-                sideLabel(order.getSide()),
-                order.getSymbol(),
-                order.getInstrumentCode(),
-                order.getQuantity(),
-                order.getRemainingQuantity(),
-                order.getExecutedQuantity(),
-                order.getOrderPrice(),
-                order.getLivePrice(),
-                order.getAverageExecutedPrice(),
-                orderValue,
-                order.getOrderTime(),
-                order.getCancelledAt(),
-                order.getStatus(),
-                statusLabel(order.getStatus()),
-                order.isCancellable(),
-                order.getOrderType(),
-                orderTypeLabel(order.getOrderType()),
-                order.getPriceType(),
-                order.getValidity(),
-                order.getExpiresAt(),
-                order.getTriggerComparator(),
-                order.getTriggerPrice()
-        );
-    }
-
-    private PortfolioHoldingResponse toPortfolioResponse(PortfolioHolding holding) {
-        BigDecimal netValue = holding.getLivePrice().multiply(BigDecimal.valueOf(holding.getQuantity()));
-        return new PortfolioHoldingResponse(
-                holding.getId(),
-                holding.getAcquiredAt(),
-                holding.getSymbol(),
-                holding.getInstrumentCode(),
-                holding.getQuantity(),
-                holding.getBuyPrice(),
-                holding.getLivePrice(),
-                netValue
-        );
-    }
-
-    private String sideLabel(OrderSide side) {
-        return switch (side) {
-            case BUY -> "خرید";
-            case SELL -> "فروش";
-        };
-    }
-
-    private String orderTypeLabel(OrderType orderType) {
-        if (orderType == null) {
-            return "سفارش عادی";
-        }
-        return switch (orderType) {
-            case NORMAL -> "سفارش عادی";
-            case CONDITIONAL -> "سفارش شرطی";
-        };
-    }
-
-    private String statusLabel(OrderStatus status) {
-        return switch (status) {
-            case REQUESTED -> "درخواست شده";
-            case PARTIALLY_FILLED -> "اجرای جزئی";
-            case COMPLETED -> "انجام شده";
-            case CANCELLED -> "لغو شده";
-            case FAILED -> "ناموفق";
-            case TRIGGER_PENDING -> "در انتظار شرط";
-        };
-    }
 }

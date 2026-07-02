@@ -5,23 +5,19 @@ import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.bourseazmaapi.model.*;
 import com.ernoxin.bourseazmaapi.repository.SupportRequestMessageRepository;
-import com.ernoxin.bourseazmaapi.repository.SupportRequestMessageStats;
 import com.ernoxin.bourseazmaapi.repository.SupportRequestRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.security.SecurityUtils;
-import jakarta.persistence.criteria.Predicate;
+import com.ernoxin.bourseazmaapi.service.supportrequest.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,18 +25,23 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SupportRequestServiceImpl implements SupportRequestService {
 
-    private static final String SUPPORT_DISPLAY_NAME = "پشتیبانی";
-
     private final SupportRequestRepository supportRequestRepository;
     private final SupportRequestMessageRepository supportRequestMessageRepository;
     private final UserRepository userRepository;
+    private final SupportRequestDtoMapper dtoMapper;
+    private final SupportRequestMessageHandler messageHandler;
+    private final SupportRequestValidator validator;
+    private final SupportRequestStateHandler stateHandler;
+    private final SupportRequestTextNormalizer textNormalizer;
+    private final SupportRequestStatsLoader statsLoader;
+    private final SupportRequestQueryHelper queryHelper;
 
     @Override
     @Transactional(readOnly = true)
     public List<SupportRequestResponse> getCurrentUserRequests() {
         Long userId = SecurityUtils.currentUserId();
         List<SupportRequest> requests = supportRequestRepository.findAllByUserIdOrderByCreatedAtDesc(userId);
-        return mapToSummaryList(requests, false);
+        return dtoMapper.mapToSummaryList(requests, false);
     }
 
     @Override
@@ -49,8 +50,8 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         Long userId = SecurityUtils.currentUserId();
         User user = userRepository.getReferenceById(userId);
 
-        String subject = normalizeRequiredText(request.getSubject());
-        String message = normalizeRequiredText(request.getMessage());
+        String subject = textNormalizer.normalizeRequiredText(request.getSubject());
+        String message = textNormalizer.normalizeRequiredText(request.getMessage());
         if (subject.isEmpty() || message.isEmpty()) {
             throw new IllegalArgumentException("موضوع و متن پیام را کامل وارد کنید.");
         }
@@ -67,7 +68,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         supportRequest.setUpdatedAt(now);
 
         SupportRequest saved = supportRequestRepository.save(supportRequest);
-        return toSummaryDto(saved, false, MessageStats.empty(saved.getCreatedAt()), false);
+        return dtoMapper.toSummaryDto(saved, false, SupportRequestStatsLoader.MessageStats.empty(saved.getCreatedAt()), false);
     }
 
     @Override
@@ -76,8 +77,8 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         Long userId = SecurityUtils.currentUserId();
         SupportRequest request = supportRequestRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
-        markMessagesSeenByUser(request);
-        return toDetailDto(request, false, false);
+        messageHandler.markMessagesSeenByUser(request);
+        return dtoMapper.toDetailDto(request, false, false);
     }
 
     @Override
@@ -86,12 +87,12 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         Long userId = SecurityUtils.currentUserId();
         SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
-        ensureUserCanReply(supportRequest);
+        validator.ensureUserCanReply(supportRequest);
 
         User user = userRepository.getReferenceById(userId);
-        SupportRequestMessage message = createMessage(supportRequest, user, UserRole.USER, request.getMessage());
-        touchRequest(supportRequest);
-        return toMessageDto(message, true);
+        SupportRequestMessage message = messageHandler.createMessage(supportRequest, user, UserRole.USER, request.getMessage());
+        messageHandler.touchRequest(supportRequest);
+        return dtoMapper.toMessageDto(message, true);
     }
 
     @Override
@@ -107,13 +108,13 @@ public class SupportRequestServiceImpl implements SupportRequestService {
             throw new IllegalArgumentException("فقط پیام‌های خودتان قابل ویرایش هستند.");
         }
 
-        ensureTicketOpenForUserEdit(supportRequest);
-        ensureMessageNotSeen(message);
-        message.setMessage(normalizeRequiredText(request.getMessage()));
+        validator.ensureTicketOpenForUserEdit(supportRequest);
+        validator.ensureMessageNotSeen(message);
+        message.setMessage(textNormalizer.normalizeRequiredText(request.getMessage()));
         message.setEditedAt(Instant.now());
         SupportRequestMessage saved = supportRequestMessageRepository.save(message);
-        touchRequest(supportRequest);
-        return toMessageDto(saved, true);
+        messageHandler.touchRequest(supportRequest);
+        return dtoMapper.toMessageDto(saved, true);
     }
 
     @Override
@@ -123,13 +124,13 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
 
-        ensureTicketOpenForUserEdit(supportRequest);
-        ensureInitialMessageEditable(supportRequest);
-        supportRequest.setMessage(normalizeRequiredText(request.getMessage()));
+        validator.ensureTicketOpenForUserEdit(supportRequest);
+        validator.ensureInitialMessageEditable(supportRequest);
+        supportRequest.setMessage(textNormalizer.normalizeRequiredText(request.getMessage()));
         supportRequest.setMessageEditedAt(Instant.now());
         supportRequest.setUpdatedAt(Instant.now());
         SupportRequest saved = supportRequestRepository.save(supportRequest);
-        return toInitialMessageDto(saved, true);
+        return dtoMapper.toInitialMessageDto(saved, true);
     }
 
     @Override
@@ -138,7 +139,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         Long userId = SecurityUtils.currentUserId();
         SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
-        return closeRequest(supportRequest, false, SupportRequestClosedBy.USER);
+        return stateHandler.closeRequest(supportRequest, false, SupportRequestClosedBy.USER);
     }
 
     @Override
@@ -146,7 +147,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     public SupportRequestResponse closeAdminRequest(Long id) {
         SupportRequest supportRequest = supportRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
-        return closeRequest(supportRequest, true, SupportRequestClosedBy.ADMIN);
+        return stateHandler.closeRequest(supportRequest, true, SupportRequestClosedBy.ADMIN);
     }
 
     @Override
@@ -159,18 +160,18 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         if (supportRequest.getRating() != null) {
             throw new IllegalArgumentException("این تیکت قبلا امتیازدهی شده است.");
         }
-        if (!isRateableStatus(supportRequest.getStatus())) {
+        if (!textNormalizer.isRateableStatus(supportRequest.getStatus())) {
             throw new IllegalArgumentException("فقط تیکت‌های بسته‌شده قابل امتیازدهی هستند.");
         }
 
         supportRequest.setRating(request.getRating());
         if (request.getComment() != null && !request.getComment().isBlank()) {
-            supportRequest.setRatingComment(normalizeOptionalText(request.getComment()));
+            supportRequest.setRatingComment(textNormalizer.normalizeOptionalText(request.getComment()));
         }
         supportRequest.setUpdatedAt(Instant.now());
         SupportRequest saved = supportRequestRepository.save(supportRequest);
-        Map<Long, MessageStats> statsById = loadMessageStats(List.of(saved.getId()));
-        return toSummaryDto(saved, false, statsFor(saved, statsById), false);
+        Map<Long, SupportRequestStatsLoader.MessageStats> statsById = statsLoader.loadMessageStats(List.of(saved.getId()));
+        return dtoMapper.toSummaryDto(saved, false, statsLoader.statsFor(saved, statsById), false);
     }
 
     @Override
@@ -186,10 +187,10 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         int safeSize = Math.min(Math.max(size, 1), 100);
         Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<SupportRequest> result = supportRequestRepository.findAll(
-                buildAdminFilterSpecification(status, category, priority),
+                queryHelper.buildAdminFilterSpecification(status, category, priority),
                 pageable
         );
-        List<SupportRequestResponse> items = mapToSummaryList(result.getContent(), true);
+        List<SupportRequestResponse> items = dtoMapper.mapToSummaryList(result.getContent(), true);
         return new PagedResponse<>(
                 items,
                 result.getNumber(),
@@ -205,8 +206,8 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     public SupportRequestDetailResponse getAdminRequestDetail(Long id) {
         SupportRequest request = supportRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
-        markMessagesSeenByAdmin(request);
-        return toDetailDto(request, true, true);
+        messageHandler.markMessagesSeenByAdmin(request);
+        return dtoMapper.toDetailDto(request, true, true);
     }
 
     @Override
@@ -214,17 +215,17 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     public SupportRequestMessageResponse addAdminMessage(Long id, SupportRequestMessageCreateRequest request) {
         SupportRequest supportRequest = supportRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
-        ensureAdminCanReply(supportRequest);
+        validator.ensureAdminCanReply(supportRequest);
 
         Long adminId = SecurityUtils.currentUserId();
         User admin = userRepository.getReferenceById(adminId);
-        SupportRequestMessage message = createMessage(supportRequest, admin, UserRole.ADMIN, request.getMessage());
+        SupportRequestMessage message = messageHandler.createMessage(supportRequest, admin, UserRole.ADMIN, request.getMessage());
 
         if (supportRequest.getStatus() == SupportRequestStatus.OPEN) {
             supportRequest.setStatus(SupportRequestStatus.IN_PROGRESS);
         }
-        touchRequest(supportRequest);
-        return toMessageDto(message, false);
+        messageHandler.touchRequest(supportRequest);
+        return dtoMapper.toMessageDto(message, false);
     }
 
     @Override
@@ -240,12 +241,12 @@ public class SupportRequestServiceImpl implements SupportRequestService {
             throw new IllegalArgumentException("فقط پیام‌های خودتان قابل ویرایش هستند.");
         }
 
-        ensureMessageNotSeen(message);
-        message.setMessage(normalizeRequiredText(request.getMessage()));
+        validator.ensureMessageNotSeen(message);
+        message.setMessage(textNormalizer.normalizeRequiredText(request.getMessage()));
         message.setEditedAt(Instant.now());
         SupportRequestMessage saved = supportRequestMessageRepository.save(message);
-        touchRequest(supportRequest);
-        return toMessageDto(saved, false);
+        messageHandler.touchRequest(supportRequest);
+        return dtoMapper.toMessageDto(saved, false);
     }
 
     @Override
@@ -254,348 +255,20 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         SupportRequest supportRequest = supportRequestRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
 
-        SupportRequestStatus newStatus = normalizeIncomingStatus(request.getStatus());
-        SupportRequestStatus currentStatus = normalizeStatus(supportRequest.getStatus());
-        validateStatusTransition(currentStatus, newStatus);
+        SupportRequestStatus newStatus = textNormalizer.normalizeIncomingStatus(request.getStatus());
+        SupportRequestStatus currentStatus = textNormalizer.normalizeStatus(supportRequest.getStatus());
+        validator.validateStatusTransition(currentStatus, newStatus);
 
         if (newStatus == SupportRequestStatus.CLOSED) {
-            applyClosedStatus(supportRequest, SupportRequestClosedBy.ADMIN);
+            stateHandler.applyClosedStatus(supportRequest, SupportRequestClosedBy.ADMIN);
         } else {
             supportRequest.setStatus(newStatus);
             supportRequest.setUpdatedAt(Instant.now());
-            clearClosedMetadata(supportRequest);
+            stateHandler.clearClosedMetadata(supportRequest);
         }
 
         SupportRequest saved = supportRequestRepository.save(supportRequest);
-        Map<Long, MessageStats> statsById = loadMessageStats(List.of(saved.getId()));
-        return toSummaryDto(saved, true, statsFor(saved, statsById), false);
-    }
-
-    private List<SupportRequestResponse> mapToSummaryList(List<SupportRequest> requests, boolean includeUser) {
-        Map<Long, MessageStats> statsById = loadMessageStats(requests.stream().map(SupportRequest::getId).toList());
-        return requests.stream()
-                .map(request -> toSummaryDto(request, includeUser, statsFor(request, statsById), false))
-                .toList();
-    }
-
-    private Map<Long, MessageStats> loadMessageStats(List<Long> supportRequestIds) {
-        if (supportRequestIds.isEmpty()) {
-            return Map.of();
-        }
-
-        Map<Long, MessageStats> statsById = new HashMap<>();
-        for (SupportRequestMessageStats stats : supportRequestMessageRepository.aggregateStatsBySupportRequestIds(supportRequestIds)) {
-            statsById.put(
-                    stats.getSupportRequestId(),
-                    new MessageStats(stats.getReplyCount(), stats.getLastReplyAt())
-            );
-        }
-        return statsById;
-    }
-
-    private MessageStats statsFor(SupportRequest request, Map<Long, MessageStats> statsById) {
-        MessageStats stats = statsById.get(request.getId());
-        if (stats != null) {
-            return stats;
-        }
-        return MessageStats.empty(request.getCreatedAt());
-    }
-
-    private Specification<SupportRequest> buildAdminFilterSpecification(
-            SupportRequestStatus status,
-            SupportRequestCategory category,
-            SupportRequestPriority priority
-    ) {
-        return (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            if (status != null) {
-                predicates.add(cb.equal(root.get("status"), status));
-            }
-            if (category != null) {
-                predicates.add(cb.equal(root.get("category"), category));
-            }
-            if (priority != null) {
-                predicates.add(cb.equal(root.get("priority"), priority));
-            }
-            return cb.and(predicates.toArray(Predicate[]::new));
-        };
-    }
-
-    private SupportRequestDetailResponse toDetailDto(SupportRequest request, boolean includeUser, boolean fullUserDetails) {
-        List<SupportRequestMessage> threadMessages =
-                supportRequestMessageRepository.findAllBySupportRequestIdOrderByCreatedAtAsc(request.getId());
-        MessageStats stats = threadMessages.isEmpty()
-                ? MessageStats.empty(request.getCreatedAt())
-                : new MessageStats(
-                threadMessages.size(),
-                threadMessages.get(threadMessages.size() - 1).getCreatedAt()
-        );
-        boolean maskAuthorIdentity = !includeUser;
-        List<SupportRequestMessageResponse> messages = buildConversation(request, threadMessages, maskAuthorIdentity);
-        return new SupportRequestDetailResponse(toSummaryDto(request, includeUser, stats, fullUserDetails), messages);
-    }
-
-    private List<SupportRequestMessageResponse> buildConversation(
-            SupportRequest request,
-            List<SupportRequestMessage> threadMessages,
-            boolean maskAuthorIdentity
-    ) {
-        List<SupportRequestMessageResponse> messages = new ArrayList<>();
-        messages.add(toInitialMessageDto(request, maskAuthorIdentity));
-        threadMessages.stream()
-                .map(message -> toMessageDto(message, maskAuthorIdentity))
-                .forEach(messages::add);
-        return messages;
-    }
-
-    private SupportRequestResponse toSummaryDto(
-            SupportRequest request,
-            boolean includeUser,
-            MessageStats stats,
-            boolean fullUserDetails
-    ) {
-        return new SupportRequestResponse(
-                request.getId(),
-                request.getSubject(),
-                request.getMessage(),
-                normalizeStatus(request.getStatus()).name(),
-                request.getCategory().name(),
-                request.getPriority().name(),
-                request.getRating(),
-                request.getRatingComment(),
-                (int) stats.replyCount() + 1,
-                stats.lastReplyAt().toString(),
-                request.getCreatedAt().toString(),
-                request.getUpdatedAt().toString(),
-                request.getClosedAt() == null ? null : request.getClosedAt().toString(),
-                request.getClosedBy() == null ? null : request.getClosedBy().name(),
-                includeUser ? toUserSummary(request.getUser(), fullUserDetails) : null
-        );
-    }
-
-    private SupportRequestUserSummary toUserSummary(User user, boolean includeFullDetails) {
-        return new SupportRequestUserSummary(
-                user.getId(),
-                displayName(user),
-                user.getUsername(),
-                includeFullDetails ? user.getFirstName() : null,
-                includeFullDetails ? user.getLastName() : null,
-                includeFullDetails ? user.getNationalCode() : null,
-                includeFullDetails ? user.getPhoneNumber() : null,
-                includeFullDetails ? user.getEmail() : null
-        );
-    }
-
-    private SupportRequestMessageResponse toMessageDto(SupportRequestMessage message, boolean maskAuthorIdentity) {
-        return new SupportRequestMessageResponse(
-                message.getId(),
-                message.getMessage(),
-                message.getAuthorRole().name(),
-                resolveAuthorName(message.getAuthor(), message.getAuthorRole(), maskAuthorIdentity),
-                maskAuthorIdentity ? null : message.getAuthor().getId(),
-                message.getCreatedAt().toString(),
-                message.getEditedAt() == null ? null : message.getEditedAt().toString(),
-                message.getSeenAt() == null ? null : message.getSeenAt().toString()
-        );
-    }
-
-    private SupportRequestMessageResponse toInitialMessageDto(SupportRequest request, boolean maskAuthorIdentity) {
-        return new SupportRequestMessageResponse(
-                null,
-                request.getMessage(),
-                UserRole.USER.name(),
-                resolveAuthorName(request.getUser(), UserRole.USER, maskAuthorIdentity),
-                maskAuthorIdentity ? null : request.getUser().getId(),
-                request.getCreatedAt().toString(),
-                request.getMessageEditedAt() == null ? null : request.getMessageEditedAt().toString(),
-                request.getInitialMessageSeenAt() == null ? null : request.getInitialMessageSeenAt().toString()
-        );
-    }
-
-    private SupportRequestMessageResponse toInitialMessageDto(SupportRequest request) {
-        return toInitialMessageDto(request, false);
-    }
-
-    private SupportRequestMessage createMessage(
-            SupportRequest supportRequest,
-            User author,
-            UserRole authorRole,
-            String rawMessage
-    ) {
-        String messageText = normalizeRequiredText(rawMessage);
-        if (messageText.isEmpty()) {
-            throw new IllegalArgumentException("متن پیام را کامل وارد کنید.");
-        }
-
-        SupportRequestMessage message = new SupportRequestMessage();
-        message.setSupportRequest(supportRequest);
-        message.setAuthor(author);
-        message.setAuthorRole(authorRole);
-        message.setMessage(messageText);
-        message.setCreatedAt(Instant.now());
-        return supportRequestMessageRepository.save(message);
-    }
-
-    private void touchRequest(SupportRequest supportRequest) {
-        supportRequest.setUpdatedAt(Instant.now());
-        supportRequestRepository.save(supportRequest);
-    }
-
-    private void ensureUserCanReply(SupportRequest supportRequest) {
-        if (isClosedStatus(supportRequest.getStatus())) {
-            throw new IllegalArgumentException("این تیکت دیگر باز نیست و امکان ارسال پیام جدید وجود ندارد.");
-        }
-    }
-
-    private void ensureAdminCanReply(SupportRequest supportRequest) {
-        if (isClosedStatus(supportRequest.getStatus())) {
-            throw new IllegalArgumentException("تیکت بسته شده است و امکان ارسال پیام جدید وجود ندارد.");
-        }
-    }
-
-    private void ensureTicketOpenForUserEdit(SupportRequest supportRequest) {
-        if (isClosedStatus(supportRequest.getStatus())) {
-            throw new IllegalArgumentException("این تیکت بسته شده و امکان ویرایش پیام وجود ندارد.");
-        }
-    }
-
-    private void ensureInitialMessageEditable(SupportRequest supportRequest) {
-        if (supportRequest.getInitialMessageSeenAt() != null) {
-            throw new IllegalArgumentException("این پیام توسط پشتیبانی مشاهده شده و دیگر قابل ویرایش نیست.");
-        }
-        if (supportRequestMessageRepository.existsBySupportRequestIdAndAuthorRole(
-                supportRequest.getId(),
-                UserRole.ADMIN
-        )) {
-            throw new IllegalArgumentException("پس از دریافت پاسخ پشتیبانی امکان ویرایش پیام اولیه وجود ندارد.");
-        }
-    }
-
-    private void ensureMessageNotSeen(SupportRequestMessage message) {
-        if (message.getSeenAt() != null) {
-            throw new IllegalArgumentException("پیام‌های مشاهده‌شده دیگر قابل ویرایش نیستند.");
-        }
-    }
-
-    private void validateStatusTransition(SupportRequestStatus current, SupportRequestStatus next) {
-        if (current == next) {
-            return;
-        }
-        if (current == SupportRequestStatus.CLOSED) {
-            throw new IllegalArgumentException("تیکت بسته شده و وضعیت آن قابل تغییر نیست.");
-        }
-        boolean allowed = switch (current) {
-            case OPEN -> next == SupportRequestStatus.IN_PROGRESS || next == SupportRequestStatus.CLOSED;
-            case IN_PROGRESS -> next == SupportRequestStatus.CLOSED;
-            case CLOSED, RESOLVED -> false;
-        };
-        if (!allowed) {
-            throw new IllegalArgumentException("تغییر وضعیت از «" + current.name() + "» به «" + next.name() + "» مجاز نیست.");
-        }
-    }
-
-    private void markMessagesSeenByUser(SupportRequest request) {
-        Instant now = Instant.now();
-        List<SupportRequestMessage> messages =
-                supportRequestMessageRepository.findAllBySupportRequestIdOrderByCreatedAtAsc(request.getId());
-        for (SupportRequestMessage message : messages) {
-            if (message.getAuthorRole() == UserRole.ADMIN && message.getSeenAt() == null) {
-                message.setSeenAt(now);
-                supportRequestMessageRepository.save(message);
-            }
-        }
-    }
-
-    private void markMessagesSeenByAdmin(SupportRequest request) {
-        Instant now = Instant.now();
-        if (request.getInitialMessageSeenAt() == null) {
-            request.setInitialMessageSeenAt(now);
-            supportRequestRepository.save(request);
-        }
-        List<SupportRequestMessage> messages =
-                supportRequestMessageRepository.findAllBySupportRequestIdOrderByCreatedAtAsc(request.getId());
-        for (SupportRequestMessage message : messages) {
-            if (message.getAuthorRole() == UserRole.USER && message.getSeenAt() == null) {
-                message.setSeenAt(now);
-                supportRequestMessageRepository.save(message);
-            }
-        }
-    }
-
-    private SupportRequestResponse closeRequest(
-            SupportRequest supportRequest,
-            boolean includeUser,
-            SupportRequestClosedBy closedBy
-    ) {
-        if (isClosedStatus(supportRequest.getStatus())) {
-            throw new IllegalArgumentException("این تیکت قبلا بسته شده است.");
-        }
-
-        applyClosedStatus(supportRequest, closedBy);
-
-        SupportRequest saved = supportRequestRepository.save(supportRequest);
-        Map<Long, MessageStats> statsById = loadMessageStats(List.of(saved.getId()));
-        return toSummaryDto(saved, includeUser, statsFor(saved, statsById), false);
-    }
-
-    private void applyClosedStatus(SupportRequest supportRequest, SupportRequestClosedBy closedBy) {
-        Instant now = Instant.now();
-        supportRequest.setStatus(SupportRequestStatus.CLOSED);
-        supportRequest.setUpdatedAt(now);
-        supportRequest.setClosedAt(now);
-        supportRequest.setClosedBy(closedBy);
-    }
-
-    private void clearClosedMetadata(SupportRequest supportRequest) {
-        supportRequest.setClosedAt(null);
-        supportRequest.setClosedBy(null);
-    }
-
-    private SupportRequestStatus normalizeIncomingStatus(SupportRequestStatus status) {
-        if (status == null) {
-            throw new IllegalArgumentException("وضعیت تیکت مشخص نشده است.");
-        }
-        return status == SupportRequestStatus.RESOLVED ? SupportRequestStatus.CLOSED : status;
-    }
-
-    private boolean isRateableStatus(SupportRequestStatus status) {
-        return normalizeStatus(status) == SupportRequestStatus.CLOSED;
-    }
-
-    private boolean isClosedStatus(SupportRequestStatus status) {
-        return status == SupportRequestStatus.CLOSED || status == SupportRequestStatus.RESOLVED;
-    }
-
-    private SupportRequestStatus normalizeStatus(SupportRequestStatus status) {
-        return status == SupportRequestStatus.RESOLVED ? SupportRequestStatus.CLOSED : status;
-    }
-
-    private String resolveAuthorName(User user, UserRole authorRole, boolean maskAuthorIdentity) {
-        if (maskAuthorIdentity && authorRole == UserRole.ADMIN) {
-            return SUPPORT_DISPLAY_NAME;
-        }
-        return displayName(user);
-    }
-
-    private String displayName(User user) {
-        String fullName = (user.getFirstName() + " " + user.getLastName()).trim();
-        return fullName.isBlank() ? user.getUsername() : fullName;
-    }
-
-    private String normalizeRequiredText(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.trim().replaceAll("\\s+", " ");
-    }
-
-    private String normalizeOptionalText(String value) {
-        return value.trim().replaceAll("\\s+", " ");
-    }
-
-    private record MessageStats(long replyCount, Instant lastReplyAt) {
-        private static MessageStats empty(Instant createdAt) {
-            return new MessageStats(0, createdAt);
-        }
+        Map<Long, SupportRequestStatsLoader.MessageStats> statsById = statsLoader.loadMessageStats(List.of(saved.getId()));
+        return dtoMapper.toSummaryDto(saved, true, statsLoader.statsFor(saved, statsById), false);
     }
 }
