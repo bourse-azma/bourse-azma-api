@@ -1,5 +1,6 @@
 package com.ernoxin.bourseazmaapi.security;
 
+import com.ernoxin.bourseazmaapi.service.UserActivityService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,6 +22,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final AppUserDetailsService userDetailsService;
     private final RevokedTokenService revokedTokenService;
     private final AuthCookieService authCookieService;
+    private final UserActivityService userActivityService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -35,9 +37,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        Long authenticatedUserId = null;
         try {
             Long userId = jwtTokenService.extractUserId(token);
             AppUserPrincipal principal = userDetailsService.loadUserById(userId);
+            if (!principal.isEnabled() || principal.getTokenVersion() != jwtTokenService.extractTokenVersion(token)) {
+                filterChain.doFilter(request, response);
+                return;
+            }
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                     principal,
                     null,
@@ -45,10 +52,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             );
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            authenticatedUserId = userId;
         } catch (UsernameNotFoundException ex) {
             SecurityContextHolder.clearContext();
         }
 
         filterChain.doFilter(request, response);
+
+        if (authenticatedUserId != null) {
+            try {
+                userActivityService.touch(authenticatedUserId);
+                if ("POST".equalsIgnoreCase(request.getMethod())
+                        && "/api/v1/auth/logout".equals(request.getRequestURI())
+                        && response.getStatus() >= 200 && response.getStatus() < 300) {
+                    userActivityService.record(authenticatedUserId, "LOGOUT");
+                }
+            } catch (RuntimeException ignored) {
+                // Activity tracking must never break the user's main request.
+            }
+        }
     }
 }

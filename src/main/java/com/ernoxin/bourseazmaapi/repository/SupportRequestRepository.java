@@ -16,6 +16,12 @@ import java.util.Optional;
 
 @Repository
 public interface SupportRequestRepository extends JpaRepository<SupportRequest, Long>, JpaSpecificationExecutor<SupportRequest> {
+    long countByUserId(Long userId);
+
+    long countByStatusNot(SupportRequestStatus status);
+
+    long countByStatusIn(Collection<SupportRequestStatus> statuses);
+
     List<SupportRequest> findAllByUserIdOrderByCreatedAtDesc(Long userId);
 
     Optional<SupportRequest> findByIdAndUserId(Long id, Long userId);

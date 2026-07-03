@@ -36,6 +36,7 @@ public class JwtTokenService {
                 .claim("role", principal.getRole().name())
                 .claim("username", principal.getUsername())
                 .claim("email", principal.getEmail())
+                .claim("ver", principal.getTokenVersion())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiresAt))
                 .signWith(secretKey)
@@ -55,6 +56,11 @@ public class JwtTokenService {
         Claims claims = parseClaims(token);
         Date expiration = claims.getExpiration();
         return expiration.toInstant();
+    }
+
+    public long extractTokenVersion(String token) {
+        Number version = parseClaims(token).get("ver", Number.class);
+        return version == null ? 0L : version.longValue();
     }
 
     public boolean isValid(String token) {

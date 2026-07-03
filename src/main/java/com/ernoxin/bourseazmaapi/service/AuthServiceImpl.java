@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.service;
 import com.ernoxin.bourseazmaapi.dto.auth.AuthTokenResponse;
 import com.ernoxin.bourseazmaapi.dto.auth.LoginRequest;
 import com.ernoxin.bourseazmaapi.dto.auth.RegisterRequest;
+import com.ernoxin.bourseazmaapi.exception.AccountBlockedException;
 import com.ernoxin.bourseazmaapi.exception.InvalidCredentialsException;
 import com.ernoxin.bourseazmaapi.model.User;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
@@ -29,6 +30,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenService jwtTokenService;
     private final RevokedTokenService revokedTokenService;
     private final LoginAttemptService loginAttemptService;
+    private final UserActivityService userActivityService;
 
     @Override
     @Transactional
@@ -55,7 +57,21 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidCredentialsException();
         }
 
+        if (user.isBlocked()) {
+            throw new AccountBlockedException();
+        }
+        if (user.getDeletedAt() != null) {
+            throw new InvalidCredentialsException();
+        }
+
         loginAttemptService.clearFailedAttempts(clientIp);
+
+        Instant now = Instant.now();
+        user.setLastLoginAt(now);
+        user.setLastSeenAt(now);
+        user.setLastLoginIp(clientIp);
+        userRepository.save(user);
+        userActivityService.record(user.getId(), "LOGIN");
 
         AppUserPrincipal principal = AppUserPrincipal.from(user);
         String accessToken = jwtTokenService.generateAccessToken(principal);

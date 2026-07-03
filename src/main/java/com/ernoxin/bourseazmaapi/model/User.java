@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.time.Instant;
+
 @EqualsAndHashCode(callSuper = true)
 @Data
 @Entity
@@ -47,4 +49,34 @@ public class User extends BaseEntity<Long> {
 
     @Column(nullable = false, columnDefinition = "numeric(38,2) default 0")
     private java.math.BigDecimal balance = java.math.BigDecimal.ZERO;
+
+    @Column
+    private Instant createdAt;
+
+    private Instant lastLoginAt;
+
+    private Instant lastSeenAt;
+
+    @Column(length = 64)
+    private String lastLoginIp;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean blocked = false;
+
+    private Instant blockedAt;
+
+    @Column(length = 500)
+    private String blockedReason;
+
+    private Instant deletedAt;
+
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private long tokenVersion = 0L;
+
+    @PrePersist
+    void initializeCreatedAt() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }

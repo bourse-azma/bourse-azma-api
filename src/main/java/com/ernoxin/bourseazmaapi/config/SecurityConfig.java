@@ -2,6 +2,7 @@ package com.ernoxin.bourseazmaapi.config;
 
 import com.ernoxin.bourseazmaapi.filter.ReferenceIdFilter;
 import com.ernoxin.bourseazmaapi.security.*;
+import com.ernoxin.bourseazmaapi.service.UserActivityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -57,12 +58,14 @@ public class SecurityConfig {
     public JwtAuthenticationFilter jwtAuthenticationFilter(JwtTokenService jwtTokenService,
                                                            AppUserDetailsService appUserDetailsService,
                                                            RevokedTokenService revokedTokenService,
-                                                           AuthCookieService authCookieService) {
+                                                           AuthCookieService authCookieService,
+                                                           UserActivityService userActivityService) {
         return new JwtAuthenticationFilter(
                 jwtTokenService,
                 appUserDetailsService,
                 revokedTokenService,
-                authCookieService
+                authCookieService,
+                userActivityService
         );
     }
 }

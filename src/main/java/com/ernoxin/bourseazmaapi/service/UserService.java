@@ -24,4 +24,6 @@ public interface UserService {
     UserResponse updateCurrentUser(UserSelfUpdateRequest request);
 
     void delete(Long id);
+
+    UserResponse setBlocked(Long id, boolean blocked, String reason);
 }

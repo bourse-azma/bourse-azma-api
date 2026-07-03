@@ -19,14 +19,19 @@ public class AppUserPrincipal implements UserDetails {
     private final String phoneNumber;
     private final String password;
     private final UserRole role;
+    private final boolean enabled;
+    private final long tokenVersion;
 
-    private AppUserPrincipal(Long id, String username, String email, String phoneNumber, String password, UserRole role) {
+    private AppUserPrincipal(Long id, String username, String email, String phoneNumber, String password,
+                             UserRole role, boolean enabled, long tokenVersion) {
         this.id = id;
         this.username = username;
         this.email = email;
         this.phoneNumber = phoneNumber;
         this.password = password;
         this.role = role;
+        this.enabled = enabled;
+        this.tokenVersion = tokenVersion;
     }
 
     public static AppUserPrincipal from(User user) {
@@ -36,7 +41,9 @@ public class AppUserPrincipal implements UserDetails {
                 user.getEmail(),
                 user.getPhoneNumber(),
                 user.getPassword(),
-                user.getRole()
+                user.getRole(),
+                !user.isBlocked() && user.getDeletedAt() == null,
+                user.getTokenVersion()
         );
     }
 
@@ -53,5 +60,10 @@ public class AppUserPrincipal implements UserDetails {
     @Override
     public String getUsername() {
         return username != null ? username : (email != null ? email : phoneNumber);
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return enabled;
     }
 }

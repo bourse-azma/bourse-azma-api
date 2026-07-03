@@ -22,10 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -120,6 +117,7 @@ public class UserServiceImpl implements UserService {
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             validatePasswordChange(user, request);
             user.setPassword(passwordEncoder.encode(request.getPassword()));
+            user.setTokenVersion(user.getTokenVersion() + 1);
         }
         return userMapper.toDto(userRepository.save(user));
     }
@@ -138,6 +136,7 @@ public class UserServiceImpl implements UserService {
             passwordRequest.setPassword(request.getPassword());
             validatePasswordChange(user, passwordRequest);
             user.setPassword(passwordEncoder.encode(request.getPassword()));
+            user.setTokenVersion(user.getTokenVersion() + 1);
         }
         return userMapper.toDto(userRepository.save(user));
     }
@@ -161,7 +160,17 @@ public class UserServiceImpl implements UserService {
         validateOwnerOrAdmin(id);
         User user = findById(id);
         cancelActiveOrdersForUser(id);
-        userRepository.delete(user);
+        user.setBlocked(true);
+        user.setBlockedAt(Instant.now());
+        user.setBlockedReason("حساب توسط مدیر حذف شده است.");
+        user.setDeletedAt(Instant.now());
+        user.setTokenVersion(user.getTokenVersion() + 1);
+        user.setUsername("deleted_" + user.getId() + "_" + UUID.randomUUID().toString().substring(0, 8));
+        user.setEmail(null);
+        user.setPhoneNumber(null);
+        user.setNationalCode(null);
+        user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        userRepository.save(user);
     }
 
     private void cancelActiveOrdersForUser(Long userId) {
@@ -186,8 +195,28 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    @Override
+    @Transactional
+    public UserResponse setBlocked(Long id, boolean blocked, String reason) {
+        User user = findById(id);
+        if (user.getRole() != UserRole.USER || user.getDeletedAt() != null) {
+            throw new ResourceNotFoundException("کاربر مورد نظر یافت نشد.");
+        }
+        user.setBlocked(blocked);
+        user.setBlockedAt(blocked ? Instant.now() : null);
+        String normalizedReason = reason == null ? null : reason.trim();
+        user.setBlockedReason(blocked && normalizedReason != null && !normalizedReason.isBlank()
+                ? normalizedReason : null);
+        user.setTokenVersion(user.getTokenVersion() + 1);
+        if (blocked) {
+            cancelActiveOrdersForUser(id);
+        }
+        return userMapper.toDto(userRepository.save(user));
+    }
+
     private User findById(Long id) {
         return userRepository.findById(id)
+                .filter(user -> user.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("کاربر مورد نظر یافت نشد."));
     }
 

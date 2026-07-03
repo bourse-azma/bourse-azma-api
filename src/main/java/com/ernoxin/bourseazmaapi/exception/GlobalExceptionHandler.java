@@ -167,6 +167,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
+    @ExceptionHandler(AccountBlockedException.class)
+    public ResponseEntity<ApiResponse<ErrorResult>> handleAccountBlocked(AccountBlockedException ex) {
+        ApiResponse<ErrorResult> body = ApiResponse.of(
+                HttpStatus.FORBIDDEN,
+                "حساب کاربری مسدود است",
+                ErrorResult.forbidden(ex.getMessage())
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
+
     @ExceptionHandler(InvalidCurrentPasswordException.class)
     public ResponseEntity<ApiResponse<ErrorResult>> handleInvalidCurrentPassword(InvalidCurrentPasswordException ex) {
         Map<String, String> errors = Map.of("currentPassword", defaultIfBlank(ex.getMessage()));

@@ -34,6 +34,7 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<UserResponse> getById(@PathVariable Long id) {
         return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد", userService.getById(id));
     }
@@ -56,6 +57,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         userService.delete(id);
         return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد", null);
