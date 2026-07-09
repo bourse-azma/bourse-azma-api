@@ -19,16 +19,11 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class TradingAccountServiceImpl implements TradingAccountService {
 
-    private static final String ORDER_BOOK_PRICE_ERROR =
-            "این سایت در حالت دمو است؛ قیمت سفارش باید در محدوده صف خرید یا فروش باشد و ثبت قیمت خارج از این بازه امکان‌پذیر نیست.";
-    private static final String ORDER_BOOK_UNAVAILABLE_ERROR =
-            "اطلاعات صف خرید و فروش در دسترس نیست؛ امکان ثبت سفارش وجود ندارد.";
     private static final String MARKET_CLOSED_ERROR = "بازار بسته است و امکان ثبت سفارش وجود ندارد.";
     private final TradingOrderRepository tradingOrderRepository;
     private final PortfolioHoldingRepository portfolioHoldingRepository;
@@ -76,7 +71,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
 
         String instrumentCode = request.getInstrumentCode().trim();
         validateMarketOpen();
-        validateOrderBookReady(instrumentCode);
 
         BigDecimal livePrice = resolveLivePrice(request, instrumentCode);
         BigDecimal effectivePrice = resolveEffectivePrice(request, instrumentCode);
@@ -85,10 +79,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
 
         if (request.getOrderType() == OrderType.CONDITIONAL) {
             validateTrigger(request);
-        }
-
-        if (request.getPriceType() == PriceType.CUSTOM) {
-            validateCustomPriceWithinOrderBook(request.getSide(), instrumentCode, effectivePrice);
         }
 
         if (request.getSide() == OrderSide.BUY) {
@@ -206,23 +196,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         if (trigger == null || trigger.getComparator() == null
                 || trigger.getPrice() == null || trigger.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("برای سفارش شرطی باید شرط قیمت و قیمت معتبر مشخص شود.");
-        }
-    }
-
-    private void validateOrderBookReady(String instrumentCode) {
-        if (!marketLiquidityService.isOrderBookReady(instrumentCode)) {
-            throw new IllegalArgumentException(ORDER_BOOK_UNAVAILABLE_ERROR);
-        }
-    }
-
-    private void validateCustomPriceWithinOrderBook(OrderSide side, String instrumentCode, BigDecimal price) {
-        Optional<OrderBookPriceRange> range = side == OrderSide.BUY
-                ? marketLiquidityService.getBidPriceRange(instrumentCode)
-                : marketLiquidityService.getAskPriceRange(instrumentCode);
-        OrderBookPriceRange bounds = range.orElseThrow(
-                () -> new IllegalArgumentException(ORDER_BOOK_UNAVAILABLE_ERROR));
-        if (price.compareTo(bounds.min()) < 0 || price.compareTo(bounds.max()) > 0) {
-            throw new IllegalArgumentException(ORDER_BOOK_PRICE_ERROR);
         }
     }
 
