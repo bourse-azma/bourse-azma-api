@@ -24,9 +24,6 @@ public class UserUpdateRequest {
     @Pattern(regexp = "^[A-Za-z0-9._-]{3,50}$", message = "نام کاربری باید ۳ تا ۵۰ کاراکتر و شامل حروف انگلیسی، عدد یا . _ - باشد.")
     private String username;
 
-    @Pattern(regexp = "^$|^\\d{10}$", message = "کد ملی باید دقیقا ۱۰ رقم باشد.")
-    private String nationalCode;
-
     @Pattern(regexp = "^$|^\\+98\\d{10}$", message = "شماره موبایل باید با +98 شروع شود و ۱۰ رقم بعد از آن داشته باشد.")
     private String phoneNumber;
 

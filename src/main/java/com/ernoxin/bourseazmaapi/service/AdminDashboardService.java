@@ -66,8 +66,7 @@ public class AdminDashboardService {
                     cb.like(cb.lower(root.get("firstName")), term),
                     cb.like(cb.lower(root.get("lastName")), term),
                     cb.like(cb.lower(root.get("email")), term),
-                    cb.like(root.get("phoneNumber"), term),
-                    cb.like(root.get("nationalCode"), term)
+                    cb.like(root.get("phoneNumber"), term)
             ));
         }
         if (onlineOnly) {
@@ -105,7 +104,7 @@ public class AdminDashboardService {
         boolean online = !user.isBlocked() && user.getLastSeenAt() != null
                 && user.getLastSeenAt().isAfter(Instant.now().minus(ONLINE_WINDOW));
         return new AdminUserSummaryResponse(user.getId(), user.getUsername(), user.getFirstName(), user.getLastName(),
-                user.getNationalCode(), user.getPhoneNumber(), user.getEmail(), user.getBalance(), user.getCreatedAt(),
+                user.getPhoneNumber(), user.getEmail(), user.getBalance(), user.getCreatedAt(),
                 user.getLastLoginAt(), user.getLastSeenAt(), user.getLastLoginIp(), user.isBlocked(),
                 user.getBlockedAt(), user.getBlockedReason(), online,
                 orderRepository.countByUserId(user.getId()), tradeRepository.countByUserId(user.getId()),
@@ -127,7 +126,7 @@ public class AdminDashboardService {
                 o.getQuantity(), o.getRemainingQuantity(), o.getExecutedQuantity(), o.getOrderPrice(), o.getLivePrice(),
                 o.getAverageExecutedPrice(), value, o.getOrderTime(), o.getCancelledAt(), o.getStatus(), status,
                 o.isCancellable(), o.getOrderType(), o.getOrderType() == OrderType.CONDITIONAL ? "سفارش شرطی" : "سفارش عادی",
-                o.getPriceType(), o.getValidity(), o.getExpiresAt(), o.getTriggerComparator(), o.getTriggerPrice());
+                o.getPriceType(), o.getTriggerComparator(), o.getTriggerPrice());
     }
 
     private PortfolioHoldingResponse holding(PortfolioHolding h) {

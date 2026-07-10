@@ -19,10 +19,6 @@ public interface UserRepository extends JpaRepository<User, Long>, org.springfra
 
     boolean existsByUsernameAndIdNot(String username, Long id);
 
-    boolean existsByNationalCode(String nationalCode);
-
-    boolean existsByNationalCodeAndIdNot(String nationalCode, Long id);
-
     boolean existsByPhoneNumber(String phoneNumber);
 
     boolean existsByPhoneNumberAndIdNot(String phoneNumber, Long id);

@@ -47,8 +47,6 @@ public class MarketMakerService {
         counterOrder.setAverageExecutedPrice(null);
         counterOrder.setOrderTime(now);
         counterOrder.setStatus(OrderStatus.REQUESTED);
-        counterOrder.setValidity(OrderValidity.TODAY);
-        counterOrder.setExpiresAt(null);
 
         return tradingOrderRepository.save(counterOrder);
     }

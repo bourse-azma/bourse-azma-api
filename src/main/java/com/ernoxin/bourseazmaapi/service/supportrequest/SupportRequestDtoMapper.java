@@ -93,7 +93,6 @@ public class SupportRequestDtoMapper {
                 user.getUsername(),
                 includeFullDetails ? user.getFirstName() : null,
                 includeFullDetails ? user.getLastName() : null,
-                includeFullDetails ? user.getNationalCode() : null,
                 includeFullDetails ? user.getPhoneNumber() : null,
                 includeFullDetails ? user.getEmail() : null
         );

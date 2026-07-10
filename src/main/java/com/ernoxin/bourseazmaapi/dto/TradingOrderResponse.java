@@ -26,8 +26,6 @@ public record TradingOrderResponse(
         OrderType orderType,
         String orderTypeLabel,
         PriceType priceType,
-        OrderValidity validity,
-        Instant expiresAt,
         TriggerComparator triggerComparator,
         BigDecimal triggerPrice
 ) {

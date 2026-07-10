@@ -1,6 +1,9 @@
 package com.ernoxin.bourseazmaapi.dto;
 
-import com.ernoxin.bourseazmaapi.model.*;
+import com.ernoxin.bourseazmaapi.model.OrderSide;
+import com.ernoxin.bourseazmaapi.model.OrderType;
+import com.ernoxin.bourseazmaapi.model.PriceType;
+import com.ernoxin.bourseazmaapi.model.TriggerComparator;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import lombok.Data;
@@ -44,9 +47,6 @@ public class CreateTradingOrderRequest {
     @NotNull(message = "قیمت لحظه‌ای الزامی است.")
     @DecimalMin(value = "0.01", message = "قیمت لحظه‌ای باید بزرگ‌تر از صفر باشد.")
     private BigDecimal livePrice;
-
-    @NotNull(message = "اعتبار سفارش الزامی است.")
-    private OrderValidity validityType;
 
     @Valid
     private TriggerRequest trigger;

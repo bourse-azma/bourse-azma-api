@@ -6,7 +6,6 @@ public record SupportRequestUserSummary(
         String username,
         String firstName,
         String lastName,
-        String nationalCode,
         String phoneNumber,
         String email
 ) {

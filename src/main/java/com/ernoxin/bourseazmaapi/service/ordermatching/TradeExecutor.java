@@ -28,11 +28,6 @@ public class TradeExecutor {
     private final MarketMakerService marketMakerService;
     private final WalletLedgerService walletLedgerService;
 
-    public boolean isExpired(TradingOrder order) {
-        Instant expiresAt = order.getExpiresAt();
-        return expiresAt != null && expiresAt.isBefore(Instant.now());
-    }
-
     public Trade executeTrade(TradingOrder buyOrder, TradingOrder sellOrder,
                               long quantity, BigDecimal price) {
         BigDecimal tradeValue = price.multiply(BigDecimal.valueOf(quantity));

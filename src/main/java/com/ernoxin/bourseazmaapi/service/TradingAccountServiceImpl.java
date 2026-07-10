@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -31,7 +30,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private final OrderMatchingService orderMatchingService;
     private final MarketLiquidityService marketLiquidityService;
     private final MarketStateService marketStateService;
-    private final TradingSessionExpiryService tradingSessionExpiryService;
     private final TradingAccountResponseMapper responseMapper;
 
     @Override
@@ -103,8 +101,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         order.setLivePrice(livePrice);
         order.setOrderTime(Instant.now());
         order.setStatus(isConditional ? OrderStatus.TRIGGER_PENDING : OrderStatus.REQUESTED);
-        order.setValidity(request.getValidityType());
-        order.setExpiresAt(resolveExpiry(request.getValidityType()));
 
         if (isConditional && request.getTrigger() != null) {
             order.setTriggerComparator(request.getTrigger().getComparator());
@@ -222,15 +218,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
             throw new IllegalArgumentException(
                     "تعداد فروش از موجودی قابل فروش (" + Math.max(available, 0) + ") بیشتر است.");
         }
-    }
-
-    private Instant resolveExpiry(OrderValidity validity) {
-        Instant now = Instant.now();
-        return switch (validity) {
-            case TODAY, DAY -> tradingSessionExpiryService.endOfCurrentTradingSession(now);
-            case DAYS_30 -> now.plus(Duration.ofDays(30));
-            case DAYS_90 -> now.plus(Duration.ofDays(90));
-        };
     }
 
     private BigDecimal scaled(BigDecimal value) {

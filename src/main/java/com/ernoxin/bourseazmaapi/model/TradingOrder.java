@@ -64,13 +64,6 @@ public class TradingOrder extends BaseEntity<Long> {
     private PriceType priceType;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 12)
-    private OrderValidity validity;
-
-    @Column
-    private Instant expiresAt;
-
-    @Enumerated(EnumType.STRING)
     @Column(length = 16)
     private TriggerComparator triggerComparator;
 

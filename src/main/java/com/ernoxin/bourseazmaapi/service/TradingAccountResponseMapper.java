@@ -33,8 +33,6 @@ class TradingAccountResponseMapper {
                 order.getOrderType(),
                 orderTypeLabel(order.getOrderType()),
                 order.getPriceType(),
-                order.getValidity(),
-                order.getExpiresAt(),
                 order.getTriggerComparator(),
                 order.getTriggerPrice()
         );

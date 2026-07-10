@@ -47,7 +47,6 @@ public class UserServiceImpl implements UserService {
         createRequest.setUsername(request.getUsername());
         createRequest.setFirstName(request.getFirstName());
         createRequest.setLastName(request.getLastName());
-        createRequest.setNationalCode(request.getNationalCode());
         createRequest.setPhoneNumber(request.getPhoneNumber());
         createRequest.setEmail(request.getEmail());
         createRequest.setPassword(request.getPassword());
@@ -111,7 +110,7 @@ public class UserServiceImpl implements UserService {
         validateOwnerOrAdmin(request.getId());
         normalizeRequestForPersistence(request);
         User user = findById(request.getId());
-        validateUniqueFieldsForUpdate(request.getId(), request.getUsername(), request.getNationalCode(),
+        validateUniqueFieldsForUpdate(request.getId(), request.getUsername(),
                 request.getPhoneNumber(), request.getEmail());
         userMapper.updateEntity(request, user);
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
@@ -127,7 +126,7 @@ public class UserServiceImpl implements UserService {
         Long userId = SecurityUtils.currentUserId();
         normalizeRequestForPersistence(request);
         User user = findById(userId);
-        validateUniqueFieldsForUpdate(userId, request.getUsername(), request.getNationalCode(),
+        validateUniqueFieldsForUpdate(userId, request.getUsername(),
                 request.getPhoneNumber(), request.getEmail());
         userMapper.updateEntity(request, user);
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
@@ -168,7 +167,6 @@ public class UserServiceImpl implements UserService {
         user.setUsername("deleted_" + user.getId() + "_" + UUID.randomUUID().toString().substring(0, 8));
         user.setEmail(null);
         user.setPhoneNumber(null);
-        user.setNationalCode(null);
         user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
         userRepository.save(user);
     }
@@ -224,9 +222,6 @@ public class UserServiceImpl implements UserService {
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new DuplicateResourceException("نام کاربری واردشده قبلا ثبت شده است.");
         }
-        if (request.getNationalCode() != null && userRepository.existsByNationalCode(request.getNationalCode())) {
-            throw new DuplicateResourceException("کد ملی واردشده قبلا ثبت شده است.");
-        }
         if (request.getPhoneNumber() != null && userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
             throw new DuplicateResourceException("شماره موبایل واردشده قبلا ثبت شده است.");
         }
@@ -238,15 +233,11 @@ public class UserServiceImpl implements UserService {
     private void validateUniqueFieldsForUpdate(
             Long userId,
             String username,
-            String nationalCode,
             String phoneNumber,
             String email
     ) {
         if (userRepository.existsByUsernameAndIdNot(username, userId)) {
             throw new DuplicateResourceException("نام کاربری واردشده قبلا ثبت شده است.");
-        }
-        if (nationalCode != null && userRepository.existsByNationalCodeAndIdNot(nationalCode, userId)) {
-            throw new DuplicateResourceException("کد ملی واردشده قبلا ثبت شده است.");
         }
         if (phoneNumber != null && userRepository.existsByPhoneNumberAndIdNot(phoneNumber, userId)) {
             throw new DuplicateResourceException("شماره موبایل واردشده قبلا ثبت شده است.");
@@ -261,7 +252,6 @@ public class UserServiceImpl implements UserService {
         request.setFirstName(normalizeRequired(request.getFirstName()));
         request.setLastName(normalizeRequired(request.getLastName()));
         request.setEmail(normalizeEmail(request.getEmail()));
-        request.setNationalCode(normalizeOptional(request.getNationalCode()));
         request.setPhoneNumber(normalizeOptional(request.getPhoneNumber()));
     }
 
@@ -270,7 +260,6 @@ public class UserServiceImpl implements UserService {
         request.setFirstName(normalizeRequired(request.getFirstName()));
         request.setLastName(normalizeRequired(request.getLastName()));
         request.setEmail(normalizeEmail(request.getEmail()));
-        request.setNationalCode(normalizeOptional(request.getNationalCode()));
         request.setPhoneNumber(normalizeOptional(request.getPhoneNumber()));
     }
 
@@ -279,7 +268,6 @@ public class UserServiceImpl implements UserService {
         request.setFirstName(normalizeRequired(request.getFirstName()));
         request.setLastName(normalizeRequired(request.getLastName()));
         request.setEmail(normalizeEmail(request.getEmail()));
-        request.setNationalCode(normalizeOptional(request.getNationalCode()));
         request.setPhoneNumber(normalizeOptional(request.getPhoneNumber()));
     }
 

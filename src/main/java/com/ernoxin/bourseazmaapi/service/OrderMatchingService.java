@@ -7,7 +7,6 @@ import com.ernoxin.bourseazmaapi.model.TradingOrder;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.service.ordermatching.MarketOrderMatcher;
 import com.ernoxin.bourseazmaapi.service.ordermatching.PeerOrderMatcher;
-import com.ernoxin.bourseazmaapi.service.ordermatching.TradeExecutor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +24,6 @@ public class OrderMatchingService {
     private final TradingOrderRepository tradingOrderRepository;
     private final PeerOrderMatcher peerOrderMatcher;
     private final MarketOrderMatcher marketOrderMatcher;
-    private final TradeExecutor tradeExecutor;
 
     /**
      * Match the given incoming order against peer orders and TSETMC order-book liquidity.
@@ -33,9 +31,6 @@ public class OrderMatchingService {
      */
     @Transactional
     public List<Trade> matchOrder(TradingOrder incomingOrder) {
-        if (tradeExecutor.isExpired(incomingOrder)) {
-            return List.of();
-        }
         List<Trade> trades = new ArrayList<>();
         if (incomingOrder.getSide() == OrderSide.BUY) {
             trades.addAll(peerOrderMatcher.matchBuyOrder(incomingOrder, ACTIVE_STATUSES));

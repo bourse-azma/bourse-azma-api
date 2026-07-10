@@ -10,14 +10,11 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long> {
-    List<TradingOrder> findAllByUserIdOrderByOrderTimeDesc(Long userId);
-
     Page<TradingOrder> findAllByUserIdOrderByOrderTimeDesc(Long userId, Pageable pageable);
 
     Page<TradingOrder> findAllByUserIdAndStatusInOrderByOrderTimeDesc(
@@ -25,25 +22,11 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
 
     List<TradingOrder> findAllByUserIdAndStatusIn(Long userId, List<OrderStatus> statuses);
 
-    List<TradingOrder> findAllByStatusInAndExpiresAtBefore(List<OrderStatus> statuses, Instant expiresAt);
-
     Optional<TradingOrder> findByIdAndUserId(Long id, Long userId);
 
     List<TradingOrder> findAllByStatusOrderByOrderTimeAsc(OrderStatus status);
 
-    List<TradingOrder> findAllByUserIdAndInstrumentCodeAndSideAndStatus(Long userId,
-                                                                        String instrumentCode,
-                                                                        OrderSide side,
-                                                                        OrderStatus status);
-
-    List<TradingOrder> findAllByUserIdAndSideAndStatus(Long userId, OrderSide side, OrderStatus status);
-
     long countByUserId(Long userId);
-
-    boolean existsByUserIdAndInstrumentCodeAndOrderPriceAndQuantity(Long userId,
-                                                                    String instrumentCode,
-                                                                    java.math.BigDecimal orderPrice,
-                                                                    Long quantity);
 
     @Query("SELECT o FROM TradingOrder o WHERE o.instrumentCode = :instrumentCode " +
             "AND o.side = :side AND o.status IN :statuses " +

@@ -37,9 +37,6 @@ public class AdminBootstrapRunner implements ApplicationRunner {
     @Value("${app.bootstrap.admin.phone-number:}")
     private String phoneNumber;
 
-    @Value("${app.bootstrap.admin.national-code:}")
-    private String nationalCode;
-
     @Value("${app.bootstrap.admin.first-name:}")
     private String firstName;
 
@@ -81,10 +78,6 @@ public class AdminBootstrapRunner implements ApplicationRunner {
             log.warn("Admin bootstrap skipped: invalid phone number format.");
             return;
         }
-        if (!isBlank(nationalCode) && !nationalCode.matches("^\\d{10}$")) {
-            log.warn("Admin bootstrap skipped: invalid national code format.");
-            return;
-        }
         if (userRepository.existsByUsername(username.toLowerCase(Locale.ROOT))) {
             log.warn("Admin bootstrap skipped: username already exists.");
             return;
@@ -98,7 +91,6 @@ public class AdminBootstrapRunner implements ApplicationRunner {
         admin.setUsername(username.toLowerCase(Locale.ROOT));
         admin.setFirstName(firstName);
         admin.setLastName(lastName);
-        admin.setNationalCode(toNullIfBlank(nationalCode));
         admin.setPhoneNumber(toNullIfBlank(phoneNumber));
         admin.setEmail(toNullIfBlank(email) == null ? null : email.toLowerCase(Locale.ROOT));
         admin.setPassword(passwordEncoder.encode(password));

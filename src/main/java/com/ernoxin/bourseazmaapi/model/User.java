@@ -28,10 +28,6 @@ public class User extends BaseEntity<Long> {
     @Column(nullable = false)
     private String lastName;
 
-    @Pattern(regexp = "^\\d{10}$")
-    @Column(unique = true)
-    private String nationalCode;
-
     @Pattern(regexp = "^\\+98\\d{10}$")
     @Column(unique = true)
     private String phoneNumber;

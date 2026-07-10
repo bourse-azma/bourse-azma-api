@@ -20,9 +20,6 @@ public class UserCreateRequest {
     @Pattern(regexp = "^[آاأإئؤءبپتثجچحخدذرزژسشصضطظعغفقکكيگگلمنوهةیى\\s\\u200C]+$", message = "نام خانوادگی باید فقط با حروف فارسی وارد شود.")
     private String lastName;
 
-    @Pattern(regexp = "^$|^\\d{10}$", message = "کد ملی باید دقیقا ۱۰ رقم باشد.")
-    private String nationalCode;
-
     @Pattern(regexp = "^$|^\\+98\\d{10}$", message = "شماره موبایل باید با +98 شروع شود و ۱۰ رقم بعد از آن داشته باشد.")
     private String phoneNumber;
 
