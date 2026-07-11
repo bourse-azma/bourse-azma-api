@@ -22,7 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.*;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -36,7 +38,6 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final WalletTransactionRepository walletTransactionRepository;
     private final TradingOrderRepository tradingOrderRepository;
-    private final OrderMatchingService orderMatchingService;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
 
@@ -179,18 +180,12 @@ public class UserServiceImpl implements UserService {
         }
 
         Instant now = Instant.now();
-        Set<String> affectedInstruments = new HashSet<>();
         for (TradingOrder order : activeOrders) {
             order.setStatus(OrderStatus.CANCELLED);
             order.setCancelledAt(now);
             order.setRemainingQuantity(0L);
-            affectedInstruments.add(order.getInstrumentCode());
         }
         tradingOrderRepository.saveAll(activeOrders);
-
-        for (String instrumentCode : affectedInstruments) {
-            orderMatchingService.runMatchingForInstrument(instrumentCode);
-        }
     }
 
     @Override

@@ -133,11 +133,12 @@ public class MarketLiquidityService {
         for (JsonNode level : levels) {
             BigDecimal price = toPrice(side == Side.ASK ? level.get("askPrice") : level.get("bidPrice"));
             long volume = toVolume(side == Side.ASK ? level.get("askVolume") : level.get("bidVolume"));
+            long orderCount = toVolume(side == Side.ASK ? level.get("askOrderCount") : level.get("bidOrderCount"));
             int levelNumber = level.hasNonNull("levelNumber") ? level.get("levelNumber").asInt(0) : 0;
             if (price == null || volume <= 0) {
                 continue;
             }
-            parsed.add(new MarketLiquidityLevel(levelNumber, price, volume));
+            parsed.add(new MarketLiquidityLevel(levelNumber, price, volume, orderCount));
         }
         return parsed;
     }

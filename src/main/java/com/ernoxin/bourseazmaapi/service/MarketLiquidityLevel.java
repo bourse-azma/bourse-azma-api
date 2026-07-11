@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 public record MarketLiquidityLevel(
         int levelNumber,
         BigDecimal price,
-        long volume
+        long volume,
+        long orderCount
 ) {
 }

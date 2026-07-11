@@ -10,7 +10,10 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "trading_orders")
+@Table(name = "trading_orders", indexes = {
+        @Index(name = "idx_order_private_book", columnList = "user_id,instrument_code,status,order_time"),
+        @Index(name = "idx_order_matching", columnList = "status,instrument_code,remaining_quantity")
+})
 public class TradingOrder extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -71,9 +74,10 @@ public class TradingOrder extends BaseEntity<Long> {
     private BigDecimal triggerPrice;
 
     public boolean isCancellable() {
-        return status == OrderStatus.REQUESTED
+        return remainingQuantity != null && remainingQuantity > 0
+                && (status == OrderStatus.REQUESTED
                 || status == OrderStatus.PARTIALLY_FILLED
-                || status == OrderStatus.TRIGGER_PENDING;
+                || status == OrderStatus.TRIGGER_PENDING);
     }
 
     public boolean isActive() {

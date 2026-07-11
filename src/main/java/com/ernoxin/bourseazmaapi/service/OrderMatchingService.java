@@ -1,16 +1,16 @@
 package com.ernoxin.bourseazmaapi.service;
 
-import com.ernoxin.bourseazmaapi.model.OrderSide;
 import com.ernoxin.bourseazmaapi.model.OrderStatus;
+import com.ernoxin.bourseazmaapi.model.PriceType;
 import com.ernoxin.bourseazmaapi.model.Trade;
 import com.ernoxin.bourseazmaapi.model.TradingOrder;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.service.ordermatching.MarketOrderMatcher;
-import com.ernoxin.bourseazmaapi.service.ordermatching.PeerOrderMatcher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,62 +22,48 @@ public class OrderMatchingService {
             List.of(OrderStatus.REQUESTED, OrderStatus.PARTIALLY_FILLED);
 
     private final TradingOrderRepository tradingOrderRepository;
-    private final PeerOrderMatcher peerOrderMatcher;
     private final MarketOrderMatcher marketOrderMatcher;
 
     /**
-     * Match the given incoming order against peer orders and TSETMC order-book liquidity.
+     * Match the given incoming order against the public order-book snapshot assigned to its
+     * private simulation. Application users are never counterparties to one another.
      * The caller must have already saved the order with REQUESTED status.
      */
     @Transactional
     public List<Trade> matchOrder(TradingOrder incomingOrder) {
-        List<Trade> trades = new ArrayList<>();
-        if (incomingOrder.getSide() == OrderSide.BUY) {
-            trades.addAll(peerOrderMatcher.matchBuyOrder(incomingOrder, ACTIVE_STATUSES));
-            if (incomingOrder.getRemainingQuantity() > 0) {
-                trades.addAll(marketOrderMatcher.matchBuyAgainstMarket(incomingOrder));
-            }
-        } else {
-            trades.addAll(peerOrderMatcher.matchSellOrder(incomingOrder, ACTIVE_STATUSES));
-            if (incomingOrder.getRemainingQuantity() > 0) {
-                trades.addAll(marketOrderMatcher.matchSellAgainstMarket(incomingOrder));
-            }
+        if (incomingOrder == null || incomingOrder.getId() == null) {
+            return List.of();
         }
+        TradingOrder lockedOrder = tradingOrderRepository.findByIdForUpdate(incomingOrder.getId())
+                .orElse(incomingOrder);
+        if (!lockedOrder.isActive()) {
+            return List.of();
+        }
+
+        List<Trade> trades;
+        if (lockedOrder.getSide() == com.ernoxin.bourseazmaapi.model.OrderSide.BUY) {
+            trades = new ArrayList<>(marketOrderMatcher.matchBuyAgainstMarket(lockedOrder));
+        } else {
+            trades = new ArrayList<>(marketOrderMatcher.matchSellAgainstMarket(lockedOrder));
+        }
+        closeUnfilledMarketOrder(lockedOrder);
         return trades;
     }
 
     /**
-     * Re-run matching for all active orders on a given instrument.
-     * Useful after cancellation frees liquidity or after TSETMC order-book updates.
+     * Re-run matching for a single user's isolated book after a public market update.
      */
     @Transactional
-    public List<Trade> runMatchingForInstrument(String instrumentCode) {
+    public List<Trade> runMatchingForUserInstrument(Long userId, String instrumentCode) {
         List<Trade> allTrades = new ArrayList<>();
-
-        List<TradingOrder> activeBuys = tradingOrderRepository.findActiveBuyOrders(
-                instrumentCode, OrderSide.BUY, ACTIVE_STATUSES);
-        for (TradingOrder buyOrder : activeBuys) {
-            if (buyOrder.getRemainingQuantity() <= 0) {
-                continue;
-            }
-            allTrades.addAll(peerOrderMatcher.matchBuyOrder(buyOrder, ACTIVE_STATUSES));
-            if (buyOrder.getRemainingQuantity() > 0) {
-                allTrades.addAll(marketOrderMatcher.matchBuyAgainstMarket(buyOrder));
+        List<Long> orderIds = tradingOrderRepository.findActiveOrderIdsForPrivateBook(
+                userId, instrumentCode, ACTIVE_STATUSES);
+        for (Long orderId : orderIds) {
+            TradingOrder order = tradingOrderRepository.findByIdForUpdate(orderId).orElse(null);
+            if (order != null && order.isActive()) {
+                allTrades.addAll(matchOrder(order));
             }
         }
-
-        List<TradingOrder> activeSells = tradingOrderRepository.findActiveSellOrders(
-                instrumentCode, OrderSide.SELL, ACTIVE_STATUSES);
-        for (TradingOrder sellOrder : activeSells) {
-            if (sellOrder.getRemainingQuantity() <= 0) {
-                continue;
-            }
-            allTrades.addAll(peerOrderMatcher.matchSellOrder(sellOrder, ACTIVE_STATUSES));
-            if (sellOrder.getRemainingQuantity() > 0) {
-                allTrades.addAll(marketOrderMatcher.matchSellAgainstMarket(sellOrder));
-            }
-        }
-
         return allTrades;
     }
 
@@ -85,8 +71,23 @@ public class OrderMatchingService {
     public List<Trade> runMatchingForAllActiveInstruments() {
         List<Trade> allTrades = new ArrayList<>();
         for (String instrumentCode : tradingOrderRepository.findDistinctInstrumentCodesWithActiveOrders()) {
-            allTrades.addAll(runMatchingForInstrument(instrumentCode));
+            for (Long userId : tradingOrderRepository.findDistinctUserIdsWithActiveOrders(instrumentCode)) {
+                allTrades.addAll(runMatchingForUserInstrument(userId, instrumentCode));
+            }
         }
         return allTrades;
+    }
+
+    private void closeUnfilledMarketOrder(TradingOrder order) {
+        if (order.getPriceType() != PriceType.MARKET || order.getRemainingQuantity() <= 0
+                || order.getStatus() == OrderStatus.COMPLETED) {
+            return;
+        }
+        order.setRemainingQuantity(0L);
+        order.setCancelledAt(Instant.now());
+        order.setStatus(order.getExecutedQuantity() > 0
+                ? OrderStatus.PARTIALLY_FILLED
+                : OrderStatus.FAILED);
+        tradingOrderRepository.save(order);
     }
 }

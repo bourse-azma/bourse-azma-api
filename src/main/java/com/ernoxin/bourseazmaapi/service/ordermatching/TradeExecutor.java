@@ -68,15 +68,11 @@ public class TradeExecutor {
             sellOrder.setUser(seller);
         }
 
-        buyOrder.setExecutedQuantity(buyOrder.getExecutedQuantity() + quantity);
-        buyOrder.setRemainingQuantity(buyOrder.getRemainingQuantity() - quantity);
-        buyOrder.setAverageExecutedPrice(computeAvgPrice(buyOrder));
+        applyFill(buyOrder, quantity, price);
         updateOrderStatus(buyOrder);
         tradingOrderRepository.save(buyOrder);
 
-        sellOrder.setExecutedQuantity(sellOrder.getExecutedQuantity() + quantity);
-        sellOrder.setRemainingQuantity(sellOrder.getRemainingQuantity() - quantity);
-        sellOrder.setAverageExecutedPrice(computeAvgPrice(sellOrder));
+        applyFill(sellOrder, quantity, price);
         updateOrderStatus(sellOrder);
         tradingOrderRepository.save(sellOrder);
 
@@ -196,31 +192,19 @@ public class TradeExecutor {
         }
     }
 
-    private BigDecimal computeAvgPrice(TradingOrder order) {
-        if (order.getExecutedQuantity() <= 0) {
-            return BigDecimal.ZERO;
-        }
+    private void applyFill(TradingOrder order, long fillQuantity, BigDecimal fillPrice) {
+        long previousQuantity = order.getExecutedQuantity();
+        BigDecimal previousAverage = order.getAverageExecutedPrice() != null
+                ? order.getAverageExecutedPrice()
+                : BigDecimal.ZERO;
+        long newExecutedQuantity = previousQuantity + fillQuantity;
+        BigDecimal totalValue = previousAverage.multiply(BigDecimal.valueOf(previousQuantity))
+                .add(fillPrice.multiply(BigDecimal.valueOf(fillQuantity)));
 
-        List<Trade> trades;
-        if (order.getSide() == OrderSide.BUY) {
-            trades = tradeRepository.findAllByBuyOrderIdOrSellOrderIdOrderByExecutedAtDesc(
-                    order.getId(), -1L);
-        } else {
-            trades = tradeRepository.findAllByBuyOrderIdOrSellOrderIdOrderByExecutedAtDesc(
-                    -1L, order.getId());
-        }
-
-        BigDecimal totalValue = BigDecimal.ZERO;
-        long totalQty = 0;
-        for (Trade trade : trades) {
-            totalValue = totalValue.add(trade.getPrice().multiply(BigDecimal.valueOf(trade.getQuantity())));
-            totalQty += trade.getQuantity();
-        }
-
-        if (totalQty == 0) {
-            return order.getOrderPrice();
-        }
-        return totalValue.divide(BigDecimal.valueOf(totalQty), 2, RoundingMode.HALF_UP);
+        order.setExecutedQuantity(newExecutedQuantity);
+        order.setRemainingQuantity(order.getRemainingQuantity() - fillQuantity);
+        order.setAverageExecutedPrice(totalValue.divide(
+                BigDecimal.valueOf(newExecutedQuantity), 2, RoundingMode.HALF_UP));
     }
 
     private void updateOrderStatus(TradingOrder order) {

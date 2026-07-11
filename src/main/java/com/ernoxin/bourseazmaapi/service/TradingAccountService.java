@@ -11,6 +11,8 @@ public interface TradingAccountService {
 
     List<PortfolioHoldingResponse> getPortfolio(Long userId);
 
+    PrivateOrderBookResponse getOrderBook(Long userId, String instrumentCode);
+
     CreateOrderResult createOrder(Long userId, CreateTradingOrderRequest request);
 
     CancelOrderResult cancelOrder(Long userId, Long orderId);

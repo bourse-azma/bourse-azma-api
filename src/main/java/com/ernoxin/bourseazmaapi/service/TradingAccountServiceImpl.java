@@ -31,6 +31,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private final MarketLiquidityService marketLiquidityService;
     private final MarketStateService marketStateService;
     private final TradingAccountResponseMapper responseMapper;
+    private final PrivateOrderBookService privateOrderBookService;
 
     @Override
     @Transactional(readOnly = true)
@@ -59,6 +60,13 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         return portfolioHoldingRepository.findAllByUserIdOrderByAcquiredAtDesc(userId).stream()
                 .map(responseMapper::toPortfolioResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PrivateOrderBookResponse getOrderBook(Long userId, String instrumentCode) {
+        ensureUserExists(userId);
+        return privateOrderBookService.getOrderBook(userId, instrumentCode);
     }
 
     @Override
@@ -116,19 +124,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
             saved = tradingOrderRepository.findById(saved.getId()).orElse(saved);
         }
 
-        // For MARKET orders: if not fully filled, cancel remaining quantity explicitly.
-        if (!isConditional && request.getPriceType() == PriceType.MARKET
-                && saved.getRemainingQuantity() > 0 && saved.getStatus() != OrderStatus.COMPLETED) {
-            saved.setRemainingQuantity(0L);
-            saved.setCancelledAt(Instant.now());
-            if (saved.getExecutedQuantity() > 0) {
-                saved.setStatus(OrderStatus.PARTIALLY_FILLED);
-            } else {
-                saved.setStatus(OrderStatus.FAILED);
-            }
-            tradingOrderRepository.save(saved);
-        }
-
         List<TradeResponse> tradeResponses = trades.stream()
                 .map(t -> new TradeResponse(t.getId(), t.getQuantity(), t.getPrice(), t.getValue(), t.getExecutedAt()))
                 .toList();
@@ -157,9 +152,6 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         order.setRemainingQuantity(0L);
 
         tradingOrderRepository.save(order);
-
-        // After cancellation, re-run matching in case freed liquidity enables other matches
-        orderMatchingService.runMatchingForInstrument(order.getInstrumentCode());
 
         return new CancelOrderResult(responseMapper.toOrderResponse(order));
     }

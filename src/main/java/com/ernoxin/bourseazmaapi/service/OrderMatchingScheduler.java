@@ -14,10 +14,11 @@ public class OrderMatchingScheduler {
     private final OrderMatchingService orderMatchingService;
     private final OrderTriggerService orderTriggerService;
     private final OrderMatchingProperties properties;
+    private final MarketStateService marketStateService;
 
     @Scheduled(fixedDelayString = "${app.order-matching.poll-interval-ms:5000}")
     public void pollActiveOrders() {
-        if (!properties.enabled()) {
+        if (!properties.enabled() || !marketStateService.isMarketOpen()) {
             return;
         }
 

@@ -1,11 +1,12 @@
 package com.ernoxin.bourseazmaapi.repository;
 
-import com.ernoxin.bourseazmaapi.model.OrderSide;
 import com.ernoxin.bourseazmaapi.model.OrderStatus;
 import com.ernoxin.bourseazmaapi.model.TradingOrder;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -24,23 +25,27 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
 
     Optional<TradingOrder> findByIdAndUserId(Long id, Long userId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM TradingOrder o WHERE o.id = :id")
+    Optional<TradingOrder> findByIdForUpdate(@Param("id") Long id);
+
     List<TradingOrder> findAllByStatusOrderByOrderTimeAsc(OrderStatus status);
 
+    @Query("SELECT o FROM TradingOrder o WHERE o.user.id = :userId " +
+            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
+            "AND o.remainingQuantity > 0 ORDER BY o.orderTime ASC")
+    List<TradingOrder> findActiveOrdersForPrivateBook(@Param("userId") Long userId,
+                                                      @Param("instrumentCode") String instrumentCode,
+                                                      @Param("statuses") List<OrderStatus> statuses);
+
+    @Query("SELECT o.id FROM TradingOrder o WHERE o.user.id = :userId " +
+            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
+            "AND o.remainingQuantity > 0 ORDER BY o.orderTime ASC")
+    List<Long> findActiveOrderIdsForPrivateBook(@Param("userId") Long userId,
+                                                @Param("instrumentCode") String instrumentCode,
+                                                @Param("statuses") List<OrderStatus> statuses);
+
     long countByUserId(Long userId);
-
-    @Query("SELECT o FROM TradingOrder o WHERE o.instrumentCode = :instrumentCode " +
-            "AND o.side = :side AND o.status IN :statuses " +
-            "ORDER BY o.orderPrice ASC, o.orderTime ASC")
-    List<TradingOrder> findActiveSellOrders(@Param("instrumentCode") String instrumentCode,
-                                            @Param("side") OrderSide side,
-                                            @Param("statuses") List<OrderStatus> statuses);
-
-    @Query("SELECT o FROM TradingOrder o WHERE o.instrumentCode = :instrumentCode " +
-            "AND o.side = :side AND o.status IN :statuses " +
-            "ORDER BY o.orderPrice DESC, o.orderTime ASC")
-    List<TradingOrder> findActiveBuyOrders(@Param("instrumentCode") String instrumentCode,
-                                           @Param("side") OrderSide side,
-                                           @Param("statuses") List<OrderStatus> statuses);
 
     @Query("SELECT COALESCE(SUM(o.remainingQuantity), 0) FROM TradingOrder o " +
             "WHERE o.user.id = :userId AND o.instrumentCode = :instrumentCode " +
@@ -69,6 +74,11 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
                                           @Param("excludeOrderId") Long excludeOrderId);
 
     @Query("SELECT DISTINCT o.instrumentCode FROM TradingOrder o " +
-            "WHERE o.status IN ('REQUESTED', 'PARTIALLY_FILLED')")
+            "WHERE o.status IN ('REQUESTED', 'PARTIALLY_FILLED') AND o.remainingQuantity > 0")
     List<String> findDistinctInstrumentCodesWithActiveOrders();
+
+    @Query("SELECT DISTINCT o.user.id FROM TradingOrder o " +
+            "WHERE o.instrumentCode = :instrumentCode " +
+            "AND o.status IN ('REQUESTED', 'PARTIALLY_FILLED') AND o.remainingQuantity > 0")
+    List<Long> findDistinctUserIdsWithActiveOrders(@Param("instrumentCode") String instrumentCode);
 }
