@@ -149,11 +149,15 @@ public class TradingAccountServiceImpl implements TradingAccountService {
             throw new IllegalArgumentException(reason);
         }
 
+        String instrumentCode = order.getInstrumentCode();
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelledAt(Instant.now());
         order.setRemainingQuantity(0L);
 
         tradingOrderRepository.save(order);
+
+        // Freeing reserved shares/cash can allow remaining private-book orders to match.
+        orderMatchingService.runMatchingForUserInstrument(userId, instrumentCode);
 
         return new CancelOrderResult(responseMapper.toOrderResponse(order));
     }

@@ -20,6 +20,9 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,12 +51,12 @@ class TradeExecutorTest {
                 userRepository, marketMakerService, walletLedgerService);
         buyer = user(1L, "buyer", "10000");
         marketMaker = user(2L, MarketMakerService.MARKET_MAKER_USERNAME, "0");
-        when(marketMakerService.isMarketMaker(buyer)).thenReturn(false);
-        when(marketMakerService.isMarketMaker(marketMaker)).thenReturn(true);
-        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(buyer));
-        when(holdingRepository.findAllByUserIdAndInstrumentCode(1L, "INS")).thenReturn(List.of());
-        when(userRepository.getReferenceById(1L)).thenReturn(buyer);
-        when(tradeRepository.save(any(Trade.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(marketMakerService.isMarketMaker(buyer)).thenReturn(false);
+        lenient().when(marketMakerService.isMarketMaker(marketMaker)).thenReturn(true);
+        lenient().when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(buyer));
+        lenient().when(holdingRepository.findAllByUserIdAndInstrumentCode(1L, "INS")).thenReturn(List.of());
+        lenient().when(userRepository.getReferenceById(1L)).thenReturn(buyer);
+        lenient().when(tradeRepository.save(any(Trade.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -68,6 +71,33 @@ class TradeExecutorTest {
         assertThat(buy.getAverageExecutedPrice()).isEqualByComparingTo("160.00");
         assertThat(buy.getStatus()).isEqualTo(OrderStatus.PARTIALLY_FILLED);
         assertThat(buyer.getBalance()).isEqualByComparingTo("9200");
+    }
+
+    @Test
+    void selfTradeLocksUserOnceAndNetsCashWhileRewritingInventoryCost() {
+        PortfolioHolding holding = new PortfolioHolding();
+        holding.setUser(buyer);
+        holding.setSymbol("نماد");
+        holding.setInstrumentCode("INS");
+        holding.setQuantity(10L);
+        holding.setBuyPrice(bd("80"));
+        holding.setLivePrice(bd("100"));
+        when(holdingRepository.findAllByUserIdAndInstrumentCode(1L, "INS"))
+                .thenReturn(List.of(holding));
+        when(holdingRepository.save(any(PortfolioHolding.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        TradingOrder buy = order(30L, buyer, OrderSide.BUY, 4);
+        TradingOrder sell = order(31L, buyer, OrderSide.SELL, 4);
+
+        Trade trade = executor.executeTrade(buy, sell, 4, bd("100"));
+
+        assertThat(trade).isNotNull();
+        assertThat(buy.getStatus()).isEqualTo(OrderStatus.COMPLETED);
+        assertThat(sell.getStatus()).isEqualTo(OrderStatus.COMPLETED);
+        // Cash nets to zero for a wash trade
+        assertThat(buyer.getBalance()).isEqualByComparingTo("10000");
+        verify(userRepository, times(1)).findByIdForUpdate(1L);
     }
 
     private User user(Long id, String username, String balance) {

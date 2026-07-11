@@ -2,7 +2,7 @@ package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.model.*;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
-import com.ernoxin.bourseazmaapi.service.ordermatching.MarketOrderMatcher;
+import com.ernoxin.bourseazmaapi.service.ordermatching.PrivateBookMatcher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,20 +23,20 @@ class OrderMatchingServiceTest {
     @Mock
     private TradingOrderRepository orderRepository;
     @Mock
-    private MarketOrderMatcher marketOrderMatcher;
+    private PrivateBookMatcher privateBookMatcher;
 
     private OrderMatchingService service;
 
     @BeforeEach
     void setUp() {
-        service = new OrderMatchingService(orderRepository, marketOrderMatcher);
+        service = new OrderMatchingService(orderRepository, privateBookMatcher);
     }
 
     @Test
     void unfilledMarketOrderIsClosedAndCannotRestOnBook() {
         TradingOrder order = activeOrder(7L, OrderSide.BUY, PriceType.MARKET, 10);
         when(orderRepository.findByIdForUpdate(7L)).thenReturn(Optional.of(order));
-        when(marketOrderMatcher.matchBuyAgainstMarket(order)).thenReturn(List.of());
+        when(privateBookMatcher.matchFully(order)).thenReturn(List.of());
 
         service.matchOrder(order);
 
@@ -51,7 +51,7 @@ class OrderMatchingServiceTest {
     void limitOrderWithoutCrossingLiquidityKeepsItsQueuePosition() {
         TradingOrder order = activeOrder(8L, OrderSide.SELL, PriceType.CUSTOM, 6);
         when(orderRepository.findByIdForUpdate(8L)).thenReturn(Optional.of(order));
-        when(marketOrderMatcher.matchSellAgainstMarket(order)).thenReturn(List.of());
+        when(privateBookMatcher.matchFully(order)).thenReturn(List.of());
 
         service.matchOrder(order);
 
@@ -66,7 +66,7 @@ class OrderMatchingServiceTest {
         TradingOrder order = activeOrder(9L, OrderSide.BUY, PriceType.MARKET, 10);
         Trade trade = new Trade();
         when(orderRepository.findByIdForUpdate(9L)).thenReturn(Optional.of(order));
-        when(marketOrderMatcher.matchBuyAgainstMarket(order)).thenAnswer(invocation -> {
+        when(privateBookMatcher.matchFully(order)).thenAnswer(invocation -> {
             order.setExecutedQuantity(4L);
             order.setRemainingQuantity(6L);
             order.setStatus(OrderStatus.PARTIALLY_FILLED);
@@ -84,20 +84,25 @@ class OrderMatchingServiceTest {
     }
 
     @Test
-    void schedulerScopesEachMatchingPassToOneUsersPrivateBook() {
-        when(orderRepository.findActiveOrderIdsForPrivateBook(
+    void schedulerUsesPriceTimePriorityAndSelfCrossCollapse() {
+        when(privateBookMatcher.collapseSelfCrosses(22L, "INS")).thenReturn(List.of());
+        when(orderRepository.findActiveBuyOrderIdsForMatching(
                 22L, "INS", List.of(OrderStatus.REQUESTED, OrderStatus.PARTIALLY_FILLED)))
                 .thenReturn(List.of(11L));
+        when(orderRepository.findActiveSellOrderIdsForMatching(
+                22L, "INS", List.of(OrderStatus.REQUESTED, OrderStatus.PARTIALLY_FILLED)))
+                .thenReturn(List.of());
         TradingOrder order = activeOrder(11L, OrderSide.BUY, PriceType.CUSTOM, 5);
         when(orderRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(order));
-        when(marketOrderMatcher.matchBuyAgainstMarket(order)).thenReturn(List.of());
+        when(privateBookMatcher.matchAgainstResidualMarket(order)).thenReturn(List.of());
 
         service.runMatchingForUserInstrument(22L, "INS");
 
-        verify(orderRepository).findActiveOrderIdsForPrivateBook(
+        verify(privateBookMatcher).collapseSelfCrosses(22L, "INS");
+        verify(orderRepository).findActiveBuyOrderIdsForMatching(
                 22L, "INS", List.of(OrderStatus.REQUESTED, OrderStatus.PARTIALLY_FILLED));
-        verify(marketOrderMatcher).matchBuyAgainstMarket(order);
-        verifyNoMoreInteractions(marketOrderMatcher);
+        verify(privateBookMatcher).matchAgainstResidualMarket(order);
+        verify(privateBookMatcher, never()).matchFully(any());
     }
 
     private TradingOrder activeOrder(Long id, OrderSide side, PriceType priceType, long remaining) {

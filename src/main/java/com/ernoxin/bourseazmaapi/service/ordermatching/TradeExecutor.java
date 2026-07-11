@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 @Component
 @RequiredArgsConstructor
@@ -34,38 +35,64 @@ public class TradeExecutor {
 
         boolean buyerIsMarketMaker = marketMakerService.isMarketMaker(buyOrder.getUser());
         boolean sellerIsMarketMaker = marketMakerService.isMarketMaker(sellOrder.getUser());
+        boolean sameUser = !buyerIsMarketMaker && !sellerIsMarketMaker
+                && buyOrder.getUser() != null && sellOrder.getUser() != null
+                && Objects.equals(buyOrder.getUser().getId(), sellOrder.getUser().getId());
 
-        if (!buyerIsMarketMaker) {
-            User buyer = userRepository.findByIdForUpdate(buyOrder.getUser().getId())
-                    .orElse(null);
-            if (buyer == null) {
-                failBuyOrder(buyOrder, "حساب خریدار یافت نشد.");
+        if (sameUser) {
+            User user = userRepository.findByIdForUpdate(buyOrder.getUser().getId()).orElse(null);
+            if (user == null) {
+                failBuyOrder(buyOrder, "حساب کاربر یافت نشد.");
+                failSellOrder(sellOrder, "حساب کاربر یافت نشد.");
                 return null;
             }
-            BigDecimal buyerBalance = buyer.getBalance() != null ? buyer.getBalance() : BigDecimal.ZERO;
-            if (buyerBalance.compareTo(tradeValue) < 0) {
+            BigDecimal balance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
+            if (balance.compareTo(tradeValue) < 0) {
                 failBuyOrder(buyOrder, "موجودی کافی برای اجرای سفارش خرید وجود ندارد.");
                 return null;
             }
-            buyOrder.setUser(buyer);
-        }
-
-        if (!sellerIsMarketMaker) {
-            User seller = userRepository.findByIdForUpdate(sellOrder.getUser().getId())
-                    .orElse(null);
-            if (seller == null) {
-                failSellOrder(sellOrder, "حساب فروشنده یافت نشد.");
-                return null;
-            }
             long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCode(
-                    sellOrder.getUser().getId(),
-                    sellOrder.getInstrumentCode()
+                    user.getId(), sellOrder.getInstrumentCode()
             ).stream().mapToLong(PortfolioHolding::getQuantity).sum();
             if (available < quantity) {
                 failSellOrder(sellOrder, "موجودی کافی برای اجرای سفارش فروش وجود ندارد.");
                 return null;
             }
-            sellOrder.setUser(seller);
+            buyOrder.setUser(user);
+            sellOrder.setUser(user);
+        } else {
+            if (!buyerIsMarketMaker) {
+                User buyer = userRepository.findByIdForUpdate(buyOrder.getUser().getId())
+                        .orElse(null);
+                if (buyer == null) {
+                    failBuyOrder(buyOrder, "حساب خریدار یافت نشد.");
+                    return null;
+                }
+                BigDecimal buyerBalance = buyer.getBalance() != null ? buyer.getBalance() : BigDecimal.ZERO;
+                if (buyerBalance.compareTo(tradeValue) < 0) {
+                    failBuyOrder(buyOrder, "موجودی کافی برای اجرای سفارش خرید وجود ندارد.");
+                    return null;
+                }
+                buyOrder.setUser(buyer);
+            }
+
+            if (!sellerIsMarketMaker) {
+                User seller = userRepository.findByIdForUpdate(sellOrder.getUser().getId())
+                        .orElse(null);
+                if (seller == null) {
+                    failSellOrder(sellOrder, "حساب فروشنده یافت نشد.");
+                    return null;
+                }
+                long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCode(
+                        sellOrder.getUser().getId(),
+                        sellOrder.getInstrumentCode()
+                ).stream().mapToLong(PortfolioHolding::getQuantity).sum();
+                if (available < quantity) {
+                    failSellOrder(sellOrder, "موجودی کافی برای اجرای سفارش فروش وجود ندارد.");
+                    return null;
+                }
+                sellOrder.setUser(seller);
+            }
         }
 
         applyFill(buyOrder, quantity, price);
@@ -76,33 +103,53 @@ public class TradeExecutor {
         updateOrderStatus(sellOrder);
         tradingOrderRepository.save(sellOrder);
 
-        if (!buyerIsMarketMaker) {
-            User buyer = buyOrder.getUser();
-            BigDecimal buyerBalance = buyer.getBalance() != null ? buyer.getBalance() : BigDecimal.ZERO;
-            BigDecimal newBalance = buyerBalance.subtract(tradeValue);
-            buyer.setBalance(newBalance);
-            userRepository.save(buyer);
-            addHolding(buyOrder.getUser().getId(), buyOrder.getSymbol(), buyOrder.getInstrumentCode(),
-                    quantity, price);
+        if (sameUser) {
+            // Wash trade: cash and inventory net to zero; ledger still records both legs.
+            User user = buyOrder.getUser();
             walletLedgerService.recordBalanceChange(
-                    buyer,
+                    user,
                     tradeValue.negate(),
-                    String.format("خرید %s به تعداد %d با قیمت %s ریال", buyOrder.getSymbol(), quantity, price.toPlainString())
+                    String.format("خرید %s به تعداد %d با قیمت %s ریال (معامله داخلی صف)",
+                            buyOrder.getSymbol(), quantity, price.toPlainString())
             );
-        }
-
-        if (!sellerIsMarketMaker) {
-            User seller = sellOrder.getUser();
-            BigDecimal sellerBalance = seller.getBalance() != null ? seller.getBalance() : BigDecimal.ZERO;
-            BigDecimal newBalance = sellerBalance.add(tradeValue);
-            seller.setBalance(newBalance);
-            userRepository.save(seller);
-            removeHolding(sellOrder.getUser().getId(), sellOrder.getInstrumentCode(), quantity);
             walletLedgerService.recordBalanceChange(
-                    seller,
+                    user,
                     tradeValue,
-                    String.format("فروش %s به تعداد %d با قیمت %s ریال", sellOrder.getSymbol(), quantity, price.toPlainString())
+                    String.format("فروش %s به تعداد %d با قیمت %s ریال (معامله داخلی صف)",
+                            sellOrder.getSymbol(), quantity, price.toPlainString())
             );
+            // Holdings: remove sold shares then add bought shares at trade price (net same qty).
+            removeHolding(user.getId(), sellOrder.getInstrumentCode(), quantity);
+            addHolding(user.getId(), buyOrder.getSymbol(), buyOrder.getInstrumentCode(), quantity, price);
+        } else {
+            if (!buyerIsMarketMaker) {
+                User buyer = buyOrder.getUser();
+                BigDecimal buyerBalance = buyer.getBalance() != null ? buyer.getBalance() : BigDecimal.ZERO;
+                BigDecimal newBalance = buyerBalance.subtract(tradeValue);
+                buyer.setBalance(newBalance);
+                userRepository.save(buyer);
+                addHolding(buyOrder.getUser().getId(), buyOrder.getSymbol(), buyOrder.getInstrumentCode(),
+                        quantity, price);
+                walletLedgerService.recordBalanceChange(
+                        buyer,
+                        tradeValue.negate(),
+                        String.format("خرید %s به تعداد %d با قیمت %s ریال", buyOrder.getSymbol(), quantity, price.toPlainString())
+                );
+            }
+
+            if (!sellerIsMarketMaker) {
+                User seller = sellOrder.getUser();
+                BigDecimal sellerBalance = seller.getBalance() != null ? seller.getBalance() : BigDecimal.ZERO;
+                BigDecimal newBalance = sellerBalance.add(tradeValue);
+                seller.setBalance(newBalance);
+                userRepository.save(seller);
+                removeHolding(sellOrder.getUser().getId(), sellOrder.getInstrumentCode(), quantity);
+                walletLedgerService.recordBalanceChange(
+                        seller,
+                        tradeValue,
+                        String.format("فروش %s به تعداد %d با قیمت %s ریال", sellOrder.getSymbol(), quantity, price.toPlainString())
+                );
+            }
         }
 
         Trade trade = new Trade();

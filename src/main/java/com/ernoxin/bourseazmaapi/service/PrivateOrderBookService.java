@@ -6,6 +6,7 @@ import com.ernoxin.bourseazmaapi.model.OrderSide;
 import com.ernoxin.bourseazmaapi.model.OrderStatus;
 import com.ernoxin.bourseazmaapi.model.TradingOrder;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
+import com.ernoxin.bourseazmaapi.service.ordermatching.ResidualBookLevel;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +15,10 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 
+/**
+ * Builds a user's isolated simulated book from the same residual-market + own-resting state
+ * used by the matching engine.
+ */
 @Service
 @RequiredArgsConstructor
 public class PrivateOrderBookService {
@@ -23,12 +28,11 @@ public class PrivateOrderBookService {
             List.of(OrderStatus.REQUESTED, OrderStatus.PARTIALLY_FILLED);
 
     private final TradingOrderRepository tradingOrderRepository;
-    private final MarketLiquidityService marketLiquidityService;
+    private final PrivateBookStateService privateBookStateService;
 
     /**
-     * Builds a user's isolated simulated book by overlaying only that user's resting orders on
-     * the public market snapshot. Orders owned by every other application user are deliberately
-     * excluded, so an abusive demo account cannot change this view or its matching outcome.
+     * Residual public depth (after this user's prior takes) overlaid with only this user's
+     * resting orders. Other application users are excluded entirely.
      */
     @Transactional(readOnly = true)
     public PrivateOrderBookResponse getOrderBook(Long userId, String instrumentCode) {
@@ -37,18 +41,19 @@ public class PrivateOrderBookService {
         Map<BigDecimal, MutableLevel> bids = new TreeMap<>(Comparator.reverseOrder());
         Map<BigDecimal, MutableLevel> asks = new TreeMap<>();
 
-        for (MarketLiquidityLevel level : marketLiquidityService.getBidLevels(normalizedCode)) {
-            mergeMarketLevel(bids, level);
+        for (ResidualBookLevel level : privateBookStateService.loadResidualBidLevels(userId, normalizedCode)) {
+            mergeResidualLevel(bids, level);
         }
-        for (MarketLiquidityLevel level : marketLiquidityService.getAskLevels(normalizedCode)) {
-            mergeMarketLevel(asks, level);
+        for (ResidualBookLevel level : privateBookStateService.loadResidualAskLevels(userId, normalizedCode)) {
+            mergeResidualLevel(asks, level);
         }
 
         List<TradingOrder> ownOrders = tradingOrderRepository.findActiveOrdersForPrivateBook(
                 userId, normalizedCode, VISIBLE_STATUSES);
         for (TradingOrder order : ownOrders) {
             Map<BigDecimal, MutableLevel> side = order.getSide() == OrderSide.BUY ? bids : asks;
-            MutableLevel level = side.computeIfAbsent(order.getOrderPrice(), ignored -> new MutableLevel());
+            BigDecimal price = order.getOrderPrice().setScale(2, java.math.RoundingMode.HALF_UP);
+            MutableLevel level = side.computeIfAbsent(price, ignored -> new MutableLevel());
             level.volume += order.getRemainingQuantity();
             level.orderCount++;
             level.ownVolume += order.getRemainingQuantity();
@@ -77,10 +82,10 @@ public class PrivateOrderBookService {
         return new PrivateOrderBookResponse(normalizedCode, List.copyOf(rows), Instant.now());
     }
 
-    private void mergeMarketLevel(Map<BigDecimal, MutableLevel> levels, MarketLiquidityLevel source) {
+    private void mergeResidualLevel(Map<BigDecimal, MutableLevel> levels, ResidualBookLevel source) {
         MutableLevel target = levels.computeIfAbsent(source.price(), ignored -> new MutableLevel());
-        target.volume += source.volume();
-        target.orderCount += source.orderCount();
+        target.volume += source.residualVolume();
+        target.orderCount += source.displayOrderCount();
     }
 
     private List<Map.Entry<BigDecimal, MutableLevel>> firstLevels(Map<BigDecimal, MutableLevel> levels) {

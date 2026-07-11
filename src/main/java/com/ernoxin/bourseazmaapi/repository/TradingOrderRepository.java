@@ -40,8 +40,55 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
 
     @Query("SELECT o.id FROM TradingOrder o WHERE o.user.id = :userId " +
             "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
-            "AND o.remainingQuantity > 0 ORDER BY o.orderTime ASC")
-    List<Long> findActiveOrderIdsForPrivateBook(@Param("userId") Long userId,
+            "AND o.remainingQuantity > 0 AND o.side = com.ernoxin.bourseazmaapi.model.OrderSide.BUY " +
+            "ORDER BY o.orderPrice DESC, o.orderTime ASC")
+    List<Long> findActiveBuyOrderIdsForMatching(@Param("userId") Long userId,
+                                                @Param("instrumentCode") String instrumentCode,
+                                                @Param("statuses") List<OrderStatus> statuses);
+
+    @Query("SELECT o.id FROM TradingOrder o WHERE o.user.id = :userId " +
+            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
+            "AND o.remainingQuantity > 0 AND o.side = com.ernoxin.bourseazmaapi.model.OrderSide.SELL " +
+            "ORDER BY o.orderPrice ASC, o.orderTime ASC")
+    List<Long> findActiveSellOrderIdsForMatching(@Param("userId") Long userId,
+                                                 @Param("instrumentCode") String instrumentCode,
+                                                 @Param("statuses") List<OrderStatus> statuses);
+
+    @Query("SELECT o FROM TradingOrder o WHERE o.user.id = :userId " +
+            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
+            "AND o.remainingQuantity > 0 AND o.side = com.ernoxin.bourseazmaapi.model.OrderSide.SELL " +
+            "AND o.orderPrice <= :maxPrice AND o.id <> :excludeOrderId " +
+            "ORDER BY o.orderPrice ASC, o.orderTime ASC")
+    List<TradingOrder> findOwnRestingSellsForMatch(@Param("userId") Long userId,
+                                                   @Param("instrumentCode") String instrumentCode,
+                                                   @Param("maxPrice") java.math.BigDecimal maxPrice,
+                                                   @Param("statuses") List<OrderStatus> statuses,
+                                                   @Param("excludeOrderId") Long excludeOrderId);
+
+    @Query("SELECT o FROM TradingOrder o WHERE o.user.id = :userId " +
+            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
+            "AND o.remainingQuantity > 0 AND o.side = com.ernoxin.bourseazmaapi.model.OrderSide.BUY " +
+            "AND o.orderPrice >= :minPrice AND o.id <> :excludeOrderId " +
+            "ORDER BY o.orderPrice DESC, o.orderTime ASC")
+    List<TradingOrder> findOwnRestingBuysForMatch(@Param("userId") Long userId,
+                                                  @Param("instrumentCode") String instrumentCode,
+                                                  @Param("minPrice") java.math.BigDecimal minPrice,
+                                                  @Param("statuses") List<OrderStatus> statuses,
+                                                  @Param("excludeOrderId") Long excludeOrderId);
+
+    @Query("SELECT o FROM TradingOrder o WHERE o.user.id = :userId " +
+            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
+            "AND o.remainingQuantity > 0 AND o.side = com.ernoxin.bourseazmaapi.model.OrderSide.BUY " +
+            "ORDER BY o.orderPrice DESC, o.orderTime ASC")
+    List<TradingOrder> findActiveBuysPriceTime(@Param("userId") Long userId,
+                                               @Param("instrumentCode") String instrumentCode,
+                                               @Param("statuses") List<OrderStatus> statuses);
+
+    @Query("SELECT o FROM TradingOrder o WHERE o.user.id = :userId " +
+            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
+            "AND o.remainingQuantity > 0 AND o.side = com.ernoxin.bourseazmaapi.model.OrderSide.SELL " +
+            "ORDER BY o.orderPrice ASC, o.orderTime ASC")
+    List<TradingOrder> findActiveSellsPriceTime(@Param("userId") Long userId,
                                                 @Param("instrumentCode") String instrumentCode,
                                                 @Param("statuses") List<OrderStatus> statuses);
 

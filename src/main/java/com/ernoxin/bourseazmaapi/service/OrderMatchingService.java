@@ -5,7 +5,7 @@ import com.ernoxin.bourseazmaapi.model.PriceType;
 import com.ernoxin.bourseazmaapi.model.Trade;
 import com.ernoxin.bourseazmaapi.model.TradingOrder;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
-import com.ernoxin.bourseazmaapi.service.ordermatching.MarketOrderMatcher;
+import com.ernoxin.bourseazmaapi.service.ordermatching.PrivateBookMatcher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,12 +22,12 @@ public class OrderMatchingService {
             List.of(OrderStatus.REQUESTED, OrderStatus.PARTIALLY_FILLED);
 
     private final TradingOrderRepository tradingOrderRepository;
-    private final MarketOrderMatcher marketOrderMatcher;
+    private final PrivateBookMatcher privateBookMatcher;
 
     /**
-     * Match the given incoming order against the public order-book snapshot assigned to its
-     * private simulation. Application users are never counterparties to one another.
-     * The caller must have already saved the order with REQUESTED status.
+     * Match the given incoming order inside the user's private book:
+     * own opposite resting orders first, then residual public market depth.
+     * Application users are never counterparties to one another.
      */
     @Transactional
     public List<Trade> matchOrder(TradingOrder incomingOrder) {
@@ -40,28 +40,37 @@ public class OrderMatchingService {
             return List.of();
         }
 
-        List<Trade> trades;
-        if (lockedOrder.getSide() == com.ernoxin.bourseazmaapi.model.OrderSide.BUY) {
-            trades = new ArrayList<>(marketOrderMatcher.matchBuyAgainstMarket(lockedOrder));
-        } else {
-            trades = new ArrayList<>(marketOrderMatcher.matchSellAgainstMarket(lockedOrder));
-        }
+        List<Trade> trades = new ArrayList<>(privateBookMatcher.matchFully(lockedOrder));
         closeUnfilledMarketOrder(lockedOrder);
         return trades;
     }
 
     /**
-     * Re-run matching for a single user's isolated book after a public market update.
+     * Re-run matching for a single user's isolated book after a public market update,
+     * cancel, or other liquidity change. Uses price-time priority.
      */
     @Transactional
     public List<Trade> runMatchingForUserInstrument(Long userId, String instrumentCode) {
         List<Trade> allTrades = new ArrayList<>();
-        List<Long> orderIds = tradingOrderRepository.findActiveOrderIdsForPrivateBook(
-                userId, instrumentCode, ACTIVE_STATUSES);
-        for (Long orderId : orderIds) {
+        allTrades.addAll(privateBookMatcher.collapseSelfCrosses(userId, instrumentCode));
+
+        // Buys: best price first, then earliest time
+        for (Long orderId : tradingOrderRepository.findActiveBuyOrderIdsForMatching(
+                userId, instrumentCode, ACTIVE_STATUSES)) {
             TradingOrder order = tradingOrderRepository.findByIdForUpdate(orderId).orElse(null);
             if (order != null && order.isActive()) {
-                allTrades.addAll(matchOrder(order));
+                allTrades.addAll(privateBookMatcher.matchAgainstResidualMarket(order));
+                closeUnfilledMarketOrder(order);
+            }
+        }
+
+        // Sells: best price first, then earliest time
+        for (Long orderId : tradingOrderRepository.findActiveSellOrderIdsForMatching(
+                userId, instrumentCode, ACTIVE_STATUSES)) {
+            TradingOrder order = tradingOrderRepository.findByIdForUpdate(orderId).orElse(null);
+            if (order != null && order.isActive()) {
+                allTrades.addAll(privateBookMatcher.matchAgainstResidualMarket(order));
+                closeUnfilledMarketOrder(order);
             }
         }
         return allTrades;

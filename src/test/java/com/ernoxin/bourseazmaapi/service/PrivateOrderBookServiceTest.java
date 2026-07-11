@@ -5,6 +5,7 @@ import com.ernoxin.bourseazmaapi.model.OrderSide;
 import com.ernoxin.bourseazmaapi.model.OrderStatus;
 import com.ernoxin.bourseazmaapi.model.TradingOrder;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
+import com.ernoxin.bourseazmaapi.service.ordermatching.ResidualBookLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,23 +25,23 @@ class PrivateOrderBookServiceTest {
     @Mock
     private TradingOrderRepository orderRepository;
     @Mock
-    private MarketLiquidityService marketLiquidityService;
+    private PrivateBookStateService privateBookStateService;
 
     private PrivateOrderBookService service;
 
     @BeforeEach
     void setUp() {
-        service = new PrivateOrderBookService(orderRepository, marketLiquidityService);
+        service = new PrivateOrderBookService(orderRepository, privateBookStateService);
     }
 
     @Test
-    void overlaysOnlyRequestedUsersOrdersAndPreservesPricePriority() {
-        when(marketLiquidityService.getBidLevels("INS-1")).thenReturn(List.of(
-                new MarketLiquidityLevel(1, bd("100"), 1_000, 4),
-                new MarketLiquidityLevel(2, bd("99"), 500, 2)
+    void overlaysOwnOrdersOnResidualPublicDepthNotRawMarket() {
+        when(privateBookStateService.loadResidualBidLevels(41L, "INS-1")).thenReturn(List.of(
+                new ResidualBookLevel(bd("100"), 1_000, 4, 900),
+                new ResidualBookLevel(bd("99"), 500, 2, 500)
         ));
-        when(marketLiquidityService.getAskLevels("INS-1")).thenReturn(List.of(
-                new MarketLiquidityLevel(1, bd("102"), 700, 3)
+        when(privateBookStateService.loadResidualAskLevels(41L, "INS-1")).thenReturn(List.of(
+                new ResidualBookLevel(bd("102"), 700, 3, 700)
         ));
         when(orderRepository.findActiveOrdersForPrivateBook(
                 41L, "INS-1", List.of(OrderStatus.REQUESTED, OrderStatus.PARTIALLY_FILLED)))
@@ -57,8 +58,9 @@ class PrivateOrderBookServiceTest {
         assertThat(result.rows().get(0).bidVolume()).isEqualTo(10);
         assertThat(result.rows().get(0).ownBidVolume()).isEqualTo(10);
         assertThat(result.rows().get(1).bidPrice()).isEqualByComparingTo("100");
-        assertThat(result.rows().get(1).bidVolume()).isEqualTo(1_025);
-        assertThat(result.rows().get(1).bidOrderCount()).isEqualTo(5);
+        // residual 900 + own 25
+        assertThat(result.rows().get(1).bidVolume()).isEqualTo(925);
+        assertThat(result.rows().get(1).ownBidVolume()).isEqualTo(25);
         assertThat(result.rows().get(0).askPrice()).isEqualByComparingTo("102");
         assertThat(result.rows().get(0).askVolume()).isEqualTo(730);
         assertThat(result.rows().get(0).ownAskVolume()).isEqualTo(30);
