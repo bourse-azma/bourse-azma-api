@@ -74,7 +74,7 @@ public class AdminBootstrapRunner implements ApplicationRunner {
             log.warn("Admin bootstrap skipped: invalid email format.");
             return;
         }
-        if (!isBlank(phoneNumber) && !phoneNumber.matches("^\\+98\\d{10}$")) {
+        if (!isBlank(phoneNumber) && !phoneNumber.matches("^09\\d{9}$")) {
             log.warn("Admin bootstrap skipped: invalid phone number format.");
             return;
         }

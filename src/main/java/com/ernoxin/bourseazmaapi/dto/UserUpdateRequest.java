@@ -24,7 +24,7 @@ public class UserUpdateRequest {
     @Pattern(regexp = "^[A-Za-z0-9._-]{3,50}$", message = "نام کاربری باید ۳ تا ۵۰ کاراکتر و شامل حروف انگلیسی، عدد یا . _ - باشد.")
     private String username;
 
-    @Pattern(regexp = "^$|^\\+98\\d{10}$", message = "شماره موبایل باید با +98 شروع شود و ۱۰ رقم بعد از آن داشته باشد.")
+    @Pattern(regexp = "^$|^09\\d{9}$", message = "شماره موبایل باید با 09 شروع شود و ۱۱ رقم داشته باشد.")
     private String phoneNumber;
 
     @Pattern(regexp = "^$|^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", message = "ایمیل واردشده معتبر نیست.")

@@ -28,7 +28,7 @@ public class User extends BaseEntity<Long> {
     @Column(nullable = false)
     private String lastName;
 
-    @Pattern(regexp = "^\\+98\\d{10}$")
+    @Pattern(regexp = "^09\\d{9}$")
     @Column(unique = true)
     private String phoneNumber;
 
