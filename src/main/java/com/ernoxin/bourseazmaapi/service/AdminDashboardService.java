@@ -38,6 +38,7 @@ public class AdminDashboardService {
     private final UserActivityLogRepository activityRepository;
     private final SupportRequestRepository supportRequestRepository;
     private final WalletMapper walletMapper;
+    private final MarketLiquidityService marketLiquidityService;
 
     public AdminDashboardStatsResponse stats() {
         Instant onlineAfter = Instant.now().minus(ONLINE_WINDOW);
@@ -130,9 +131,10 @@ public class AdminDashboardService {
     }
 
     private PortfolioHoldingResponse holding(PortfolioHolding h) {
+        var livePrice = marketLiquidityService.getReferencePrice(h.getInstrumentCode()).orElse(h.getLivePrice());
         return new PortfolioHoldingResponse(h.getId(), h.getAcquiredAt(), h.getSymbol(), h.getInstrumentCode(),
-                h.getQuantity(), h.getBuyPrice(), h.getLivePrice(),
-                h.getLivePrice().multiply(java.math.BigDecimal.valueOf(h.getQuantity())));
+                h.getQuantity(), h.getBuyPrice(), livePrice,
+                livePrice.multiply(java.math.BigDecimal.valueOf(h.getQuantity())));
     }
 
     private AdminTradeResponse trade(Trade t, Long userId) {

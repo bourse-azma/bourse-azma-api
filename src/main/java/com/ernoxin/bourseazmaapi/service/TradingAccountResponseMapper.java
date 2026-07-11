@@ -38,8 +38,8 @@ class TradingAccountResponseMapper {
         );
     }
 
-    PortfolioHoldingResponse toPortfolioResponse(PortfolioHolding holding) {
-        BigDecimal netValue = holding.getLivePrice().multiply(BigDecimal.valueOf(holding.getQuantity()));
+    PortfolioHoldingResponse toPortfolioResponse(PortfolioHolding holding, BigDecimal livePrice) {
+        BigDecimal netValue = livePrice.multiply(BigDecimal.valueOf(holding.getQuantity()));
         return new PortfolioHoldingResponse(
                 holding.getId(),
                 holding.getAcquiredAt(),
@@ -47,7 +47,7 @@ class TradingAccountResponseMapper {
                 holding.getInstrumentCode(),
                 holding.getQuantity(),
                 holding.getBuyPrice(),
-                holding.getLivePrice(),
+                livePrice,
                 netValue
         );
     }

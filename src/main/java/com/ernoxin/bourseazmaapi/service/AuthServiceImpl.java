@@ -34,13 +34,13 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public AuthTokenResponse register(RegisterRequest request) {
+    public AuthTokenResponse register(RegisterRequest request, String clientIp) {
         userService.register(request);
 
         LoginRequest loginRequest = new LoginRequest();
         loginRequest.setIdentifier(request.getUsername());
         loginRequest.setPassword(request.getPassword());
-        return login(loginRequest, "unknown");
+        return login(loginRequest, clientIp);
     }
 
     @Override

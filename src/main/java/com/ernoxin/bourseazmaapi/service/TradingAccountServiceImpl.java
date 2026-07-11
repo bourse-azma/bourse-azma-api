@@ -58,7 +58,9 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     public List<PortfolioHoldingResponse> getPortfolio(Long userId) {
         ensureUserExists(userId);
         return portfolioHoldingRepository.findAllByUserIdOrderByAcquiredAtDesc(userId).stream()
-                .map(responseMapper::toPortfolioResponse)
+                .map(holding -> responseMapper.toPortfolioResponse(holding,
+                        marketLiquidityService.getReferencePrice(holding.getInstrumentCode())
+                                .orElse(holding.getLivePrice())))
                 .toList();
     }
 

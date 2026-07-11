@@ -10,6 +10,7 @@ import com.ernoxin.bourseazmaapi.mapper.UserMapper;
 import com.ernoxin.bourseazmaapi.mapper.WalletMapper;
 import com.ernoxin.bourseazmaapi.model.User;
 import com.ernoxin.bourseazmaapi.model.WalletTransaction;
+import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.repository.WalletTransactionRepository;
 import com.ernoxin.bourseazmaapi.repository.WalletTransactionSummary;
@@ -32,6 +33,7 @@ public class WalletServiceImpl implements WalletService {
     private final WalletTransactionRepository walletTransactionRepository;
     private final UserMapper userMapper;
     private final WalletMapper walletMapper;
+    private final TradingOrderRepository tradingOrderRepository;
 
     private String formatAmount(BigDecimal amount) {
         DecimalFormat formatter = new DecimalFormat("#,###");
@@ -59,6 +61,11 @@ public class WalletServiceImpl implements WalletService {
                 autoDescription = String.format("افزایش موجودی به میزان %s ریال", formatAmount(amount));
                 break;
             case "SUBTRACT":
+                BigDecimal reservedBuyValue = tradingOrderRepository.sumReservedBuyValue(userId);
+                BigDecimal withdrawableBalance = oldBalance.subtract(reservedBuyValue).max(BigDecimal.ZERO);
+                if (value.compareTo(withdrawableBalance) > 0) {
+                    throw new IllegalArgumentException("مبلغ برداشت از موجودی قابل برداشت شما بیشتر است؛ بخشی از موجودی برای سفارش‌های خرید فعال بلوکه شده است.");
+                }
                 amount = value.negate();
                 newBalance = oldBalance.add(amount);
                 autoDescription = String.format("کاهش موجودی به میزان %s ریال", formatAmount(value));

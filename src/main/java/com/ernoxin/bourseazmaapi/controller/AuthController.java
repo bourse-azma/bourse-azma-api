@@ -22,14 +22,16 @@ public class AuthController {
 
     private final AuthService authService;
     private final AuthCookieService authCookieService;
+    private final ClientIpResolver clientIpResolver;
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<AuthTokenResponse> register(
             @Valid @RequestBody RegisterRequest request,
+            HttpServletRequest httpRequest,
             HttpServletResponse response
     ) {
-        AuthTokenResponse tokenResponse = authService.register(request);
+        AuthTokenResponse tokenResponse = authService.register(request, clientIpResolver.resolve(httpRequest));
         authCookieService.setAccessTokenCookie(
                 response,
                 tokenResponse.accessToken(),
@@ -45,7 +47,7 @@ public class AuthController {
             HttpServletRequest httpRequest,
             HttpServletResponse response
     ) {
-        AuthTokenResponse tokenResponse = authService.login(request, ClientIpResolver.resolve(httpRequest));
+        AuthTokenResponse tokenResponse = authService.login(request, clientIpResolver.resolve(httpRequest));
         authCookieService.setAccessTokenCookie(
                 response,
                 tokenResponse.accessToken(),

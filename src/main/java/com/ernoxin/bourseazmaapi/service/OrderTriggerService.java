@@ -19,6 +19,8 @@ import java.util.List;
 @Slf4j
 public class OrderTriggerService {
 
+    private static final BigDecimal EQUAL_TRIGGER_TOLERANCE = new BigDecimal("0.50");
+
     private final TradingOrderRepository tradingOrderRepository;
     private final MarketLiquidityService marketLiquidityService;
     private final OrderMatchingService orderMatchingService;
@@ -49,6 +51,13 @@ public class OrderTriggerService {
             if (!isTriggerMet(referencePrice, order.getTriggerComparator(), order.getTriggerPrice())) {
                 tradingOrderRepository.save(order);
                 continue;
+            }
+
+            if (order.getPriceType() == PriceType.MARKET) {
+                BigDecimal executionPrice = marketLiquidityService.resolveMarketOrderPrice(
+                        order.getInstrumentCode(), order.getSide());
+                order.setOrderPrice(executionPrice);
+                order.setLivePrice(executionPrice);
             }
 
             if (!canExecuteTriggeredOrder(order)) {
@@ -113,7 +122,8 @@ public class OrderTriggerService {
         return switch (comparator) {
             case GREATER_THAN -> comparison > 0;
             case LESS_THAN -> comparison < 0;
-            case EQUAL -> comparison == 0;
+            case EQUAL -> referencePrice.subtract(triggerPrice).abs()
+                    .compareTo(EQUAL_TRIGGER_TOLERANCE) <= 0;
         };
     }
 }
