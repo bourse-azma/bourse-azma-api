@@ -3,7 +3,6 @@ package com.ernoxin.bourseazmaapi.security;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
@@ -16,14 +15,11 @@ public class AuthCookieService {
 
     public static final String ACCESS_TOKEN_COOKIE = "bourse_azma_access_token";
 
-    @Value("${app.security.cookie.secure:true}")
-    private boolean secureCookie;
-
     public void setAccessTokenCookie(HttpServletResponse response, String token, Instant expiresAt, boolean persistent) {
         long maxAgeSeconds = Math.max(0, Duration.between(Instant.now(), expiresAt).getSeconds());
         ResponseCookie cookie = ResponseCookie.from(ACCESS_TOKEN_COOKIE, token)
                 .httpOnly(true)
-                .secure(secureCookie)
+                .secure(true)
                 .path("/")
                 .sameSite("Lax")
                 .maxAge(persistent ? maxAgeSeconds : -1)
@@ -34,7 +30,7 @@ public class AuthCookieService {
     public void clearAccessTokenCookie(HttpServletResponse response) {
         ResponseCookie cookie = ResponseCookie.from(ACCESS_TOKEN_COOKIE, "")
                 .httpOnly(true)
-                .secure(secureCookie)
+                .secure(true)
                 .path("/")
                 .sameSite("Lax")
                 .maxAge(0)

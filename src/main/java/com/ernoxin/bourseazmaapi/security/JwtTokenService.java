@@ -9,7 +9,7 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Date;
 
@@ -25,7 +25,11 @@ public class JwtTokenService {
 
     @PostConstruct
     void init() {
-        this.secretKey = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8));
+        // Always generate a strong random signing key at startup.
+        // Previous JWTs are invalidated on restart (acceptable for access tokens).
+        byte[] keyBytes = new byte[64]; // 512-bit key for strong HMAC
+        new SecureRandom().nextBytes(keyBytes);
+        this.secretKey = Keys.hmacShaKeyFor(keyBytes);
     }
 
     public String generateAccessToken(AppUserPrincipal principal) {
