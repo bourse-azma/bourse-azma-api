@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.service;
 import com.ernoxin.bourseazmaapi.config.OrderMatchingProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -16,9 +17,12 @@ public class OrderMatchingScheduler {
     private final OrderMatchingProperties properties;
     private final MarketStateService marketStateService;
 
+    @Value("${app.ui-debug-mode:false}")
+    private boolean uiDebugMode;
+
     @Scheduled(fixedDelayString = "${app.order-matching.poll-interval-ms:5000}")
     public void pollActiveOrders() {
-        if (!properties.enabled() || !marketStateService.isMarketOpen()) {
+        if (!properties.enabled() || (!uiDebugMode && !marketStateService.isMarketOpen())) {
             return;
         }
 

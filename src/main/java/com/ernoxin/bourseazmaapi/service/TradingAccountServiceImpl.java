@@ -8,6 +8,7 @@ import com.ernoxin.bourseazmaapi.repository.PortfolioHoldingRepository;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +33,9 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private final MarketStateService marketStateService;
     private final TradingAccountResponseMapper responseMapper;
     private final PrivateOrderBookService privateOrderBookService;
+
+    @Value("${app.ui-debug-mode:false}")
+    private boolean uiDebugMode;
 
     @Override
     @Transactional(readOnly = true)
@@ -78,7 +82,9 @@ public class TradingAccountServiceImpl implements TradingAccountService {
                 .orElseThrow(() -> new ResourceNotFoundException("کاربر یافت نشد."));
 
         String instrumentCode = request.getInstrumentCode().trim();
-        validateMarketOpen();
+        if (!uiDebugMode) {
+            validateMarketOpen();
+        }
 
         BigDecimal livePrice = resolveLivePrice(request, instrumentCode);
         BigDecimal effectivePrice = resolveEffectivePrice(request, instrumentCode);
