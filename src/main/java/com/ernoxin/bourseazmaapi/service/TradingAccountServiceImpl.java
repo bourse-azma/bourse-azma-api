@@ -126,7 +126,10 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         TradingOrder saved = tradingOrderRepository.save(order);
 
         List<Trade> trades = List.of();
-        if (!isConditional) {
+        // Debug mode only permits submitting an order while the market is closed.
+        // Execution must still follow the real market state; the scheduler will pick
+        // this order up after the market opens.
+        if (!isConditional && marketStateService.isMarketOpen()) {
             trades = orderMatchingService.matchOrder(saved);
             // Refresh entity after matching
             saved = tradingOrderRepository.findById(saved.getId()).orElse(saved);
