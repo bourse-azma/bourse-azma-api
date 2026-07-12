@@ -5,12 +5,10 @@ WORKDIR /workspace
 ENV MAVEN_OPTS="-Xmx${MAVEN_BUILD_HEAP_MB}m -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
 
 COPY bourse-azma-api/pom.xml ./
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -ntp -DskipTests dependency:go-offline
+RUN mvn -B -ntp -DskipTests dependency:go-offline
 
 COPY bourse-azma-api/src ./src
-RUN --mount=type=cache,target=/root/.m2 \
-    mvn -B -ntp -DskipTests clean package && \
+RUN mvn -B -ntp -DskipTests clean package && \
     JAR_FILE="$(find target -maxdepth 1 -type f -name '*.jar' ! -name '*.original' | head -n 1)" && \
     test -n "${JAR_FILE}" && \
     cp "${JAR_FILE}" /workspace/app.jar && \
