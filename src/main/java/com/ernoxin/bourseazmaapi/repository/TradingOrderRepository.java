@@ -23,13 +23,20 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
 
     List<TradingOrder> findAllByUserIdAndStatusIn(Long userId, List<OrderStatus> statuses);
 
-    Optional<TradingOrder> findByIdAndUserId(Long id, Long userId);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM TradingOrder o WHERE o.id = :id AND o.user.id = :userId")
+    Optional<TradingOrder> findByIdAndUserIdForUpdate(@Param("id") Long id,
+                                                      @Param("userId") Long userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT o FROM TradingOrder o WHERE o.id = :id")
     Optional<TradingOrder> findByIdForUpdate(@Param("id") Long id);
 
-    List<TradingOrder> findAllByStatusOrderByOrderTimeAsc(OrderStatus status);
+    @Query("SELECT o.id FROM TradingOrder o WHERE o.status = :status ORDER BY o.orderTime ASC")
+    List<Long> findIdsByStatusOrderByOrderTimeAsc(@Param("status") OrderStatus status);
+
+    @Query("SELECT o.user.id FROM TradingOrder o WHERE o.id = :id")
+    Optional<Long> findUserIdByOrderId(@Param("id") Long id);
 
     @Query("SELECT o FROM TradingOrder o WHERE o.user.id = :userId " +
             "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +

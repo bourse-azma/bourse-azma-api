@@ -29,11 +29,25 @@ public class OrderTriggerService {
 
     @Transactional
     public int evaluatePendingTriggers() {
-        List<TradingOrder> pendingOrders =
-                tradingOrderRepository.findAllByStatusOrderByOrderTimeAsc(OrderStatus.TRIGGER_PENDING);
+        List<Long> pendingOrderIds =
+                tradingOrderRepository.findIdsByStatusOrderByOrderTimeAsc(OrderStatus.TRIGGER_PENDING);
         int triggeredCount = 0;
 
-        for (TradingOrder order : pendingOrders) {
+        for (Long orderId : pendingOrderIds) {
+            Long userId = tradingOrderRepository.findUserIdByOrderId(orderId).orElse(null);
+            if (userId == null) {
+                continue;
+            }
+            User user = userRepository.findByIdForUpdate(userId).orElse(null);
+            if (user == null) {
+                continue;
+            }
+            TradingOrder order = tradingOrderRepository.findByIdForUpdate(orderId).orElse(null);
+            if (order == null || order.getStatus() != OrderStatus.TRIGGER_PENDING
+                    || order.getUser() == null || !userId.equals(order.getUser().getId())
+                    || order.getRemainingQuantity() == null || order.getRemainingQuantity() <= 0) {
+                continue;
+            }
             if (order.getTriggerComparator() == null || order.getTriggerPrice() == null) {
                 continue;
             }
@@ -60,7 +74,7 @@ public class OrderTriggerService {
                 order.setLivePrice(executionPrice);
             }
 
-            if (!canExecuteTriggeredOrder(order)) {
+            if (!canExecuteTriggeredOrder(order, user)) {
                 failTriggeredOrder(order, "منابع کافی برای اجرای سفارش شرطی در زمان فعال‌سازی وجود ندارد.");
                 continue;
             }
@@ -74,18 +88,14 @@ public class OrderTriggerService {
         return triggeredCount;
     }
 
-    private boolean canExecuteTriggeredOrder(TradingOrder order) {
+    private boolean canExecuteTriggeredOrder(TradingOrder order, User user) {
         if (order.getSide() == OrderSide.BUY) {
-            return hasBuyingPowerForTrigger(order);
+            return hasBuyingPowerForTrigger(order, user);
         }
-        return hasSellableQuantityForTrigger(order);
+        return hasSellableQuantityForTrigger(order, user);
     }
 
-    private boolean hasBuyingPowerForTrigger(TradingOrder order) {
-        User user = userRepository.findByIdForUpdate(order.getUser().getId()).orElse(null);
-        if (user == null) {
-            return false;
-        }
+    private boolean hasBuyingPowerForTrigger(TradingOrder order, User user) {
         BigDecimal balance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
         BigDecimal committed = tradingOrderRepository.sumReservedBuyValueExcluding(user.getId(), order.getId());
         BigDecimal buyingPower = balance.subtract(committed).max(BigDecimal.ZERO);
@@ -93,12 +103,8 @@ public class OrderTriggerService {
         return orderValue.compareTo(buyingPower) <= 0;
     }
 
-    private boolean hasSellableQuantityForTrigger(TradingOrder order) {
-        User user = userRepository.findByIdForUpdate(order.getUser().getId()).orElse(null);
-        if (user == null) {
-            return false;
-        }
-        long held = portfolioHoldingRepository.findAllByUserIdAndInstrumentCode(
+    private boolean hasSellableQuantityForTrigger(TradingOrder order, User user) {
+        long held = portfolioHoldingRepository.findAllByUserIdAndInstrumentCodeForUpdate(
                         user.getId(), order.getInstrumentCode())
                 .stream()
                 .mapToLong(holding -> holding.getQuantity())

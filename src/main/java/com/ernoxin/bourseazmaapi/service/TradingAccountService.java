@@ -17,5 +17,7 @@ public interface TradingAccountService {
 
     CreateOrderResult createOrder(Long userId, CreateTradingOrderRequest request);
 
+    UpdateOrderResult updateOrder(Long userId, Long orderId, UpdateTradingOrderRequest request);
+
     CancelOrderResult cancelOrder(Long userId, Long orderId);
 }

@@ -38,6 +38,15 @@ public class TradingAccountController {
                 tradingAccountService.createOrder(currentUserId, request));
     }
 
+    @PutMapping("/orders/{orderId}")
+    public ApiResponse<UpdateOrderResult> updateOrder(
+            @PathVariable Long orderId,
+            @Valid @RequestBody UpdateTradingOrderRequest request) {
+        Long currentUserId = SecurityUtils.currentUserId();
+        return ApiResponse.of(HttpStatus.OK, "سفارش با موفقیت ویرایش شد",
+                tradingAccountService.updateOrder(currentUserId, orderId, request));
+    }
+
     @PostMapping("/orders/{orderId}/cancel")
     public ApiResponse<CancelOrderResult> cancelOrder(@PathVariable Long orderId) {
         Long currentUserId = SecurityUtils.currentUserId();

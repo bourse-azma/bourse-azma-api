@@ -51,7 +51,7 @@ public class TradeExecutor {
                 failBuyOrder(buyOrder, "موجودی کافی برای اجرای سفارش خرید وجود ندارد.");
                 return null;
             }
-            long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCode(
+            long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCodeForUpdate(
                     user.getId(), sellOrder.getInstrumentCode()
             ).stream().mapToLong(PortfolioHolding::getQuantity).sum();
             if (available < quantity) {
@@ -83,7 +83,7 @@ public class TradeExecutor {
                     failSellOrder(sellOrder, "حساب فروشنده یافت نشد.");
                     return null;
                 }
-                long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCode(
+                long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCodeForUpdate(
                         sellOrder.getUser().getId(),
                         sellOrder.getInstrumentCode()
                 ).stream().mapToLong(PortfolioHolding::getQuantity).sum();
@@ -186,7 +186,7 @@ public class TradeExecutor {
     private void addHolding(Long userId, String symbol, String instrumentCode,
                             long quantity, BigDecimal price) {
         List<PortfolioHolding> existing = portfolioHoldingRepository
-                .findAllByUserIdAndInstrumentCode(userId, instrumentCode);
+                .findAllByUserIdAndInstrumentCodeForUpdate(userId, instrumentCode);
 
         if (!existing.isEmpty()) {
             PortfolioHolding holding = existing.get(0);
@@ -216,7 +216,7 @@ public class TradeExecutor {
 
     private void removeHolding(Long userId, String instrumentCode, long quantity) {
         List<PortfolioHolding> holdings = portfolioHoldingRepository
-                .findAllByUserIdAndInstrumentCode(userId, instrumentCode);
+                .findAllByUserIdAndInstrumentCodeForUpdate(userId, instrumentCode);
 
         long remaining = quantity;
         for (PortfolioHolding holding : holdings) {

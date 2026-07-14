@@ -160,8 +160,76 @@ public class TradingAccountServiceImpl implements TradingAccountService {
 
     @Override
     @Transactional
+    public UpdateOrderResult updateOrder(Long userId, Long orderId, UpdateTradingOrderRequest request) {
+        // Account mutations consistently lock the user before orders/holdings. This serializes
+        // one simulated account and avoids lock-order inversion with matching and order creation.
+        User user = userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("کاربر یافت نشد."));
+        TradingOrder order = tradingOrderRepository.findByIdAndUserIdForUpdate(orderId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("سفارش یافت نشد."));
+
+        if (!order.isCancellable()) {
+            throw new IllegalArgumentException(nonEditableOrderReason(order));
+        }
+        if (!uiDebugMode) {
+            validateMarketOpen();
+        }
+
+        long newTotalQuantity = request.getQuantity();
+        long executedQuantity = order.getExecutedQuantity() != null ? order.getExecutedQuantity() : 0L;
+        if (newTotalQuantity <= executedQuantity) {
+            throw new IllegalArgumentException(
+                    "تعداد کل جدید باید از تعداد اجراشده (" + executedQuantity + ") بیشتر باشد."
+            );
+        }
+
+        BigDecimal newPrice = resolveUpdatedPrice(order, request);
+        long newRemainingQuantity = newTotalQuantity - executedQuantity;
+        BigDecimal remainingValue = newPrice.multiply(BigDecimal.valueOf(newRemainingQuantity));
+        if (remainingValue.compareTo(tradingRules.minimumOrderValue()) < 0) {
+            throw new IllegalArgumentException(
+                    "ارزش باقیمانده سفارش باید حداقل "
+                            + formatAmount(tradingRules.minimumOrderValue()) + " ریال باشد."
+            );
+        }
+
+        if (order.getSide() == OrderSide.BUY) {
+            validateBuyingPowerForUpdate(user, order.getId(), remainingValue);
+        } else {
+            validateHoldingsForSellUpdate(
+                    userId,
+                    order.getInstrumentCode(),
+                    newRemainingQuantity,
+                    order.getId()
+            );
+        }
+
+        order.setUser(user);
+        order.setQuantity(newTotalQuantity);
+        order.setRemainingQuantity(newRemainingQuantity);
+        order.setOrderPrice(newPrice);
+        // A modified order loses its previous price-time priority, as on real order books.
+        order.setOrderTime(Instant.now());
+        TradingOrder saved = tradingOrderRepository.saveAndFlush(order);
+
+        List<Trade> trades = List.of();
+        if (saved.isActive() && marketStateService.isMarketOpen()) {
+            trades = orderMatchingService.matchOrder(saved);
+            saved = tradingOrderRepository.findById(saved.getId()).orElse(saved);
+        }
+
+        List<TradeResponse> tradeResponses = trades.stream()
+                .map(t -> new TradeResponse(t.getId(), t.getQuantity(), t.getPrice(), t.getValue(), t.getExecutedAt()))
+                .toList();
+        return new UpdateOrderResult(responseMapper.toOrderResponse(saved), tradeResponses);
+    }
+
+    @Override
+    @Transactional
     public CancelOrderResult cancelOrder(Long userId, Long orderId) {
-        TradingOrder order = tradingOrderRepository.findByIdAndUserId(orderId, userId)
+        userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("کاربر یافت نشد."));
+        TradingOrder order = tradingOrderRepository.findByIdAndUserIdForUpdate(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("سفارش یافت نشد."));
 
         if (!order.isCancellable()) {
@@ -204,6 +272,16 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         return scaled(request.getPrice());
     }
 
+    private BigDecimal resolveUpdatedPrice(TradingOrder order, UpdateTradingOrderRequest request) {
+        if (order.getPriceType() == PriceType.MARKET) {
+            return marketLiquidityService.resolveMarketOrderPrice(order.getInstrumentCode(), order.getSide());
+        }
+        if (request.getPrice() == null || request.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("برای قیمت دلخواه باید قیمت معتبری وارد شود.");
+        }
+        return scaled(request.getPrice());
+    }
+
     private void validateMarketOpen() {
         if (!marketStateService.isMarketOpen()) {
             throw new IllegalArgumentException(MARKET_CLOSED_ERROR);
@@ -227,9 +305,19 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         }
     }
 
+    private void validateBuyingPowerForUpdate(User user, Long orderId, BigDecimal remainingValue) {
+        BigDecimal balance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
+        BigDecimal committed = tradingOrderRepository.sumReservedBuyValueExcluding(user.getId(), orderId);
+        BigDecimal buyingPower = balance.subtract(committed).max(BigDecimal.ZERO);
+        if (remainingValue.compareTo(buyingPower) > 0) {
+            throw new IllegalArgumentException("ارزش باقیمانده سفارش از قدرت خرید شما بیشتر است.");
+        }
+    }
+
     private void validateHoldingsForSell(Long userId, String instrumentCode, long quantity) {
         String normalizedCode = instrumentCode.trim();
-        long held = portfolioHoldingRepository.findAllByUserIdAndInstrumentCode(userId, normalizedCode).stream()
+        long held = portfolioHoldingRepository
+                .findAllByUserIdAndInstrumentCodeForUpdate(userId, normalizedCode).stream()
                 .mapToLong(PortfolioHolding::getQuantity)
                 .sum();
         if (held <= 0) {
@@ -241,6 +329,34 @@ public class TradingAccountServiceImpl implements TradingAccountService {
             throw new IllegalArgumentException(
                     "تعداد فروش از موجودی قابل فروش (" + Math.max(available, 0) + ") بیشتر است.");
         }
+    }
+
+    private void validateHoldingsForSellUpdate(Long userId, String instrumentCode, long quantity, Long orderId) {
+        String normalizedCode = instrumentCode.trim();
+        long held = portfolioHoldingRepository
+                .findAllByUserIdAndInstrumentCodeForUpdate(userId, normalizedCode)
+                .stream()
+                .mapToLong(PortfolioHolding::getQuantity)
+                .sum();
+        long reservedByOtherOrders = tradingOrderRepository.sumReservedSellQuantityExcluding(
+                userId, normalizedCode, orderId
+        );
+        long available = held - reservedByOtherOrders;
+        if (quantity > available) {
+            throw new IllegalArgumentException(
+                    "تعداد باقیمانده فروش از موجودی قابل فروش ("
+                            + Math.max(available, 0) + ") بیشتر است."
+            );
+        }
+    }
+
+    private String nonEditableOrderReason(TradingOrder order) {
+        return switch (order.getStatus()) {
+            case COMPLETED -> "سفارش اجراشده قابل ویرایش نیست.";
+            case CANCELLED -> "سفارش لغوشده قابل ویرایش نیست.";
+            case FAILED -> "سفارش ناموفق قابل ویرایش نیست.";
+            default -> "سفارش در وضعیت فعلی قابل ویرایش نیست.";
+        };
     }
 
     private BigDecimal scaled(BigDecimal value) {

@@ -5,6 +5,7 @@ import com.ernoxin.bourseazmaapi.model.PriceType;
 import com.ernoxin.bourseazmaapi.model.Trade;
 import com.ernoxin.bourseazmaapi.model.TradingOrder;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
+import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.service.ordermatching.PrivateBookMatcher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ public class OrderMatchingService {
             List.of(OrderStatus.REQUESTED, OrderStatus.PARTIALLY_FILLED);
 
     private final TradingOrderRepository tradingOrderRepository;
+    private final UserRepository userRepository;
     private final PrivateBookMatcher privateBookMatcher;
 
     /**
@@ -34,9 +36,14 @@ public class OrderMatchingService {
         if (incomingOrder == null || incomingOrder.getId() == null) {
             return List.of();
         }
+        Long userId = incomingOrder.getUser() != null ? incomingOrder.getUser().getId() : null;
+        if (userId == null || userRepository.findByIdForUpdate(userId).isEmpty()) {
+            return List.of();
+        }
         TradingOrder lockedOrder = tradingOrderRepository.findByIdForUpdate(incomingOrder.getId())
-                .orElse(incomingOrder);
-        if (!lockedOrder.isActive()) {
+                .orElse(null);
+        if (lockedOrder == null || !lockedOrder.isActive() || lockedOrder.getUser() == null
+                || !userId.equals(lockedOrder.getUser().getId())) {
             return List.of();
         }
 
@@ -51,6 +58,9 @@ public class OrderMatchingService {
      */
     @Transactional
     public List<Trade> runMatchingForUserInstrument(Long userId, String instrumentCode) {
+        if (userId == null || userRepository.findByIdForUpdate(userId).isEmpty()) {
+            return List.of();
+        }
         List<Trade> allTrades = new ArrayList<>();
         allTrades.addAll(privateBookMatcher.collapseSelfCrosses(userId, instrumentCode));
 
