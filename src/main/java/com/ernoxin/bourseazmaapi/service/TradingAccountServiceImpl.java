@@ -1,5 +1,6 @@
 package com.ernoxin.bourseazmaapi.service;
 
+import com.ernoxin.bourseazmaapi.config.TradingRulesProperties;
 import com.ernoxin.bourseazmaapi.dto.*;
 import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
@@ -33,6 +34,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private final MarketStateService marketStateService;
     private final TradingAccountResponseMapper responseMapper;
     private final PrivateOrderBookService privateOrderBookService;
+    private final TradingRulesProperties tradingRules;
 
     @Value("${app.ui-debug-mode:false}")
     private boolean uiDebugMode;
@@ -76,6 +78,14 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     }
 
     @Override
+    public TradingRulesResponse getTradingRules() {
+        return new TradingRulesResponse(
+                tradingRules.minimumOrderValue(),
+                tradingRules.maximumWalletAdjustment()
+        );
+    }
+
+    @Override
     @Transactional
     public CreateOrderResult createOrder(Long userId, CreateTradingOrderRequest request) {
         User user = userRepository.findByIdForUpdate(userId)
@@ -90,6 +100,12 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         BigDecimal effectivePrice = resolveEffectivePrice(request, instrumentCode);
         long quantity = request.getQuantity();
         BigDecimal orderValue = effectivePrice.multiply(BigDecimal.valueOf(quantity));
+
+        if (orderValue.compareTo(tradingRules.minimumOrderValue()) < 0) {
+            throw new IllegalArgumentException(
+                    "حداقل ارزش هر سفارش " + formatAmount(tradingRules.minimumOrderValue()) + " ریال است."
+            );
+        }
 
         if (request.getOrderType() == OrderType.CONDITIONAL) {
             validateTrigger(request);
@@ -229,6 +245,10 @@ public class TradingAccountServiceImpl implements TradingAccountService {
 
     private BigDecimal scaled(BigDecimal value) {
         return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String formatAmount(BigDecimal amount) {
+        return String.format("%,.0f", amount);
     }
 
     private void ensureUserExists(Long userId) {

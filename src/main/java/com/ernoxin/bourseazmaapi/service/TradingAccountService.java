@@ -13,6 +13,8 @@ public interface TradingAccountService {
 
     PrivateOrderBookResponse getOrderBook(Long userId, String instrumentCode);
 
+    TradingRulesResponse getTradingRules();
+
     CreateOrderResult createOrder(Long userId, CreateTradingOrderRequest request);
 
     CancelOrderResult cancelOrder(Long userId, Long orderId);

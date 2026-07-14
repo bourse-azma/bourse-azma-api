@@ -1,5 +1,6 @@
 package com.ernoxin.bourseazmaapi.service;
 
+import com.ernoxin.bourseazmaapi.config.TradingRulesProperties;
 import com.ernoxin.bourseazmaapi.dto.UserResponse;
 import com.ernoxin.bourseazmaapi.dto.WalletAdjustmentRequest;
 import com.ernoxin.bourseazmaapi.dto.WalletTransactionResponse;
@@ -34,6 +35,7 @@ public class WalletServiceImpl implements WalletService {
     private final UserMapper userMapper;
     private final WalletMapper walletMapper;
     private final TradingOrderRepository tradingOrderRepository;
+    private final TradingRulesProperties tradingRules;
 
     private String formatAmount(BigDecimal amount) {
         DecimalFormat formatter = new DecimalFormat("#,###");
@@ -53,6 +55,13 @@ public class WalletServiceImpl implements WalletService {
 
         String type = request.getType().toUpperCase();
         BigDecimal value = request.getValue();
+
+        if (value.compareTo(tradingRules.maximumWalletAdjustment()) > 0) {
+            throw new IllegalArgumentException(
+                    "مبلغ واردشده بیش از حد مجاز است؛ حداکثر مبلغ هر تراکنش کیف پول "
+                            + formatAmount(tradingRules.maximumWalletAdjustment()) + " ریال است."
+            );
+        }
 
         switch (type) {
             case "ADD":

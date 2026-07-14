@@ -51,6 +51,11 @@ public class TradingAccountController {
         return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد", tradingAccountService.getPortfolio(currentUserId));
     }
 
+    @GetMapping("/rules")
+    public ApiResponse<TradingRulesResponse> getTradingRules() {
+        return ApiResponse.of(HttpStatus.OK, "عملیات با موفقیت انجام شد", tradingAccountService.getTradingRules());
+    }
+
     @GetMapping("/order-book")
     public ApiResponse<PrivateOrderBookResponse> getOrderBook(@RequestParam String instrumentCode) {
         Long currentUserId = SecurityUtils.currentUserId();
