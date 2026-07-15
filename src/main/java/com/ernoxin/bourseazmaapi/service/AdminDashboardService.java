@@ -8,6 +8,7 @@ import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.bourseazmaapi.mapper.WalletMapper;
 import com.ernoxin.bourseazmaapi.model.*;
 import com.ernoxin.bourseazmaapi.repository.*;
+import com.ernoxin.bourseazmaapi.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -16,6 +17,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -99,6 +101,36 @@ public class AdminDashboardService {
                 .findAllByUserIdAndActivityTypeInOrderByOccurredAtDesc(
                         userId, List.of("LOGIN", "LOGOUT"), latest).getContent().stream().map(this::activity).toList();
         return new AdminUserDetailResponse(summary(user), orders, trades, portfolio, wallet, activities);
+    }
+
+    @Transactional
+    public AdminUserDetailResponse updateBalance(Long userId, AdminBalanceUpdateRequest request) {
+        User user = userRepository.findByIdForUpdate(userId)
+                .filter(item -> item.getRole() == UserRole.USER)
+                .filter(item -> item.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("کاربر مورد نظر یافت نشد."));
+        User admin = userRepository.findById(SecurityUtils.currentUserId())
+                .filter(item -> item.getRole() == UserRole.ADMIN)
+                .orElseThrow(() -> new ResourceNotFoundException("مدیر انجام‌دهنده یافت نشد."));
+
+        BigDecimal previousBalance = user.getBalance() == null ? BigDecimal.ZERO : user.getBalance();
+        BigDecimal newBalance = request.balance();
+        BigDecimal difference = newBalance.subtract(previousBalance);
+        user.setBalance(newBalance);
+        userRepository.save(user);
+
+        WalletTransaction tx = new WalletTransaction();
+        tx.setUser(user);
+        tx.setAmount(difference);
+        tx.setBalanceAfter(newBalance);
+        tx.setDescription("ویرایش موجودی توسط مدیر از " + previousBalance.toPlainString()
+                + " به " + newBalance.toPlainString() + " ریال");
+        tx.setSource("ADMIN");
+        tx.setPerformedByAdmin(admin);
+        tx.setAdminNote(request.note() == null || request.note().isBlank() ? null : request.note().trim());
+        tx.setCreatedAt(Instant.now());
+        walletTransactionRepository.save(tx);
+        return userDetail(userId);
     }
 
     private AdminUserSummaryResponse summary(User user) {

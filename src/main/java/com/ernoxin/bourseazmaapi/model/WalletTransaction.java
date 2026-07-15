@@ -26,6 +26,16 @@ public class WalletTransaction extends BaseEntity<Long> {
     @Column(nullable = false)
     private String description;
 
+    @Column(length = 30)
+    private String source;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "performed_by_admin_id")
+    private User performedByAdmin;
+
+    @Column(length = 1000)
+    private String adminNote;
+
     @Column(nullable = false)
     private Instant createdAt;
 }

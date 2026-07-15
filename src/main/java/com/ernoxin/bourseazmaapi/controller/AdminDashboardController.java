@@ -3,10 +3,7 @@ package com.ernoxin.bourseazmaapi.controller;
 import com.ernoxin.bourseazmaapi.dto.UserCreateRequest;
 import com.ernoxin.bourseazmaapi.dto.UserResponse;
 import com.ernoxin.bourseazmaapi.dto.UserUpdateRequest;
-import com.ernoxin.bourseazmaapi.dto.admin.AdminDashboardStatsResponse;
-import com.ernoxin.bourseazmaapi.dto.admin.AdminUserBlockRequest;
-import com.ernoxin.bourseazmaapi.dto.admin.AdminUserDetailResponse;
-import com.ernoxin.bourseazmaapi.dto.admin.AdminUserSummaryResponse;
+import com.ernoxin.bourseazmaapi.dto.admin.*;
 import com.ernoxin.bourseazmaapi.dto.api.ApiResponse;
 import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.service.AdminDashboardService;
@@ -63,6 +60,14 @@ public class AdminDashboardController {
                                                 @Valid @RequestBody AdminUserBlockRequest request) {
         return ApiResponse.of(HttpStatus.OK, request.blocked() ? "کاربر مسدود شد." : "مسدودی کاربر برداشته شد.",
                 userService.setBlocked(userId, request.blocked(), request.reason()));
+    }
+
+    @PatchMapping("/users/{userId}/balance")
+    public ApiResponse<AdminUserDetailResponse> updateBalance(
+            @PathVariable Long userId,
+            @Valid @RequestBody AdminBalanceUpdateRequest request) {
+        return ApiResponse.of(HttpStatus.OK, "موجودی کاربر ویرایش و در سوابق ثبت شد.",
+                adminDashboardService.updateBalance(userId, request));
     }
 
     @DeleteMapping("/users/{userId}")

@@ -13,5 +13,9 @@ public class WalletTransactionResponse {
     private BigDecimal amount;
     private BigDecimal balanceAfter;
     private String description;
+    private String source;
+    private Long performedByAdminId;
+    private String performedByAdminName;
+    private String adminNote;
     private Instant createdAt;
 }
