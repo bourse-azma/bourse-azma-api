@@ -106,12 +106,16 @@ public class TradeExecutor {
         if (sameUser) {
             // Wash trade: cash and inventory net to zero; ledger still records both legs.
             User user = buyOrder.getUser();
+            BigDecimal originalBalance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
+            user.setBalance(originalBalance.subtract(tradeValue));
             walletLedgerService.recordBalanceChange(
                     user,
                     tradeValue.negate(),
                     String.format("خرید %s به تعداد %d با قیمت %s ریال (معامله داخلی صف)",
                             buyOrder.getSymbol(), quantity, price.toPlainString())
             );
+            user.setBalance(originalBalance);
+            userRepository.save(user);
             walletLedgerService.recordBalanceChange(
                     user,
                     tradeValue,

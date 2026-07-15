@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.service;
 import com.ernoxin.bourseazmaapi.dto.*;
 import com.ernoxin.bourseazmaapi.exception.DuplicateResourceException;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
+import com.ernoxin.bourseazmaapi.model.User;
 import com.ernoxin.bourseazmaapi.model.Watchlist;
 import com.ernoxin.bourseazmaapi.model.WatchlistSymbol;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
@@ -36,6 +37,7 @@ public class WatchlistServiceImpl implements WatchlistService {
     @Transactional
     public WatchlistResponse create(WatchlistCreateRequest request) {
         Long userId = SecurityUtils.currentUserId();
+        User user = lockUser(userId);
         String normalizedName = normalizeRequiredText(request.getName());
 
         if (watchlistRepository.existsByUserIdAndNameIgnoreCase(userId, normalizedName)) {
@@ -44,7 +46,7 @@ public class WatchlistServiceImpl implements WatchlistService {
 
         Watchlist watchlist = new Watchlist();
         watchlist.setName(normalizedName);
-        watchlist.setUser(userRepository.getReferenceById(userId));
+        watchlist.setUser(user);
 
         return toDto(watchlistRepository.save(watchlist));
     }
@@ -53,6 +55,7 @@ public class WatchlistServiceImpl implements WatchlistService {
     @Transactional
     public WatchlistResponse update(Long watchlistId, WatchlistUpdateRequest request) {
         Long userId = SecurityUtils.currentUserId();
+        lockUser(userId);
         String normalizedName = normalizeRequiredText(request.getName());
         Watchlist watchlist = findUserWatchlistById(watchlistId, userId);
 
@@ -68,6 +71,7 @@ public class WatchlistServiceImpl implements WatchlistService {
     @Transactional
     public void delete(Long watchlistId) {
         Long userId = SecurityUtils.currentUserId();
+        lockUser(userId);
         Watchlist watchlist = findUserWatchlistById(watchlistId, userId);
         watchlistRepository.delete(watchlist);
     }
@@ -76,6 +80,7 @@ public class WatchlistServiceImpl implements WatchlistService {
     @Transactional
     public WatchlistResponse addSymbol(Long watchlistId, WatchlistSymbolCreateRequest request) {
         Long userId = SecurityUtils.currentUserId();
+        lockUser(userId);
         Watchlist watchlist = findUserWatchlistById(watchlistId, userId);
 
         String symbolKey = normalizeRequiredText(request.getSymbolKey());
@@ -100,6 +105,7 @@ public class WatchlistServiceImpl implements WatchlistService {
     @Transactional
     public WatchlistResponse removeSymbol(Long watchlistId, Long symbolId) {
         Long userId = SecurityUtils.currentUserId();
+        lockUser(userId);
         Watchlist watchlist = findUserWatchlistById(watchlistId, userId);
         WatchlistSymbol symbol = watchlistSymbolRepository.findByIdAndWatchlistId(symbolId, watchlistId)
                 .orElseThrow(() -> new ResourceNotFoundException("نماد مورد نظر یافت نشد."));
@@ -111,6 +117,14 @@ public class WatchlistServiceImpl implements WatchlistService {
     private Watchlist findUserWatchlistById(Long watchlistId, Long userId) {
         return watchlistRepository.findByIdAndUserId(watchlistId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("دیده بان مورد نظر یافت نشد."));
+    }
+
+    private User lockUser(Long userId) {
+        // Serialize mutations to one user's watchlists. In particular, this makes the
+        // case-insensitive uniqueness check atomic even on databases whose unique
+        // constraint uses case-sensitive collation.
+        return userRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("کاربر مورد نظر یافت نشد."));
     }
 
     private WatchlistResponse toDto(Watchlist watchlist) {

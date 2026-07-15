@@ -41,6 +41,11 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
@@ -141,9 +146,18 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <argLine>
+                        -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+                    </argLine>
                     <excludes>
                         <exclude>**/._*</exclude>
                     </excludes>
+                    <systemPropertyVariables>
+                        <!-- External macOS volumes can create AppleDouble ._*.class metadata
+                             after compilation. Spring's classpath scanner must skip those
+                             invalid sidecar files during context-based tests. -->
+                        <spring.classformat.ignore>true</spring.classformat.ignore>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>

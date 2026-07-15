@@ -1,9 +1,6 @@
 package com.ernoxin.bourseazmaapi.dto;
 
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,5 +21,6 @@ public class WalletAdjustmentRequest {
     @DecimalMin(value = "0.01", message = "مبلغ باید بزرگ‌تر از صفر باشد.")
     private BigDecimal value;
 
+    @Size(max = 255, message = "توضیحات حداکثر 255 کاراکتر است.")
     private String description;
 }
