@@ -143,9 +143,9 @@ public class TradeExecutor {
                     String.format("فروش %s به تعداد %d با قیمت %s ریال (معامله داخلی صف)",
                             sellOrder.getSymbol(), quantity, price.toPlainString())
             );
-            // Holdings: remove sold shares then add bought shares at trade price (net same qty).
-            removeHolding(user.getId(), sellOrder.getInstrumentCode(), quantity);
-            addHolding(user.getId(), buyOrder.getSymbol(), buyOrder.getInstrumentCode(), quantity, price);
+            // A wash trade does not change inventory or its cost basis. Applying the
+            // sell and buy legs separately would re-price the returned shares at the
+            // execution price and let the user manipulate the portfolio average.
         } else {
             if (!buyerIsMarketMaker) {
                 User buyer = buyOrder.getUser();

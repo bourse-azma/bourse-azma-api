@@ -140,8 +140,8 @@ class TradeExecutorComplexScenarioTest {
                 new BigDecimal("1000.00")
         );
         assertThat(existing.getQuantity()).isEqualTo(100L);
-        assertThat(existing.getBuyPrice()).isEqualByComparingTo("1.20");
-        verify(holdingRepository, atLeastOnce()).save(existing);
+        assertThat(existing.getBuyPrice()).isEqualByComparingTo("1.00");
+        verify(holdingRepository, never()).save(any(PortfolioHolding.class));
         verify(holdingRepository, never()).delete(any());
     }
 
