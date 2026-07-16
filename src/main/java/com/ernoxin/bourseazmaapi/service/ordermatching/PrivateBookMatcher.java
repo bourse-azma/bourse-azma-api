@@ -12,9 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Matches a user's order inside their private simulation:
- * 1) against their own opposite resting orders (price-time priority, maker price)
- * 2) against residual public market depth assigned to that user
+ * Matches a user's order against one isolated combined book: the user's own resting
+ * orders plus the residual public depth assigned to that user, all under price-time rules.
  */
 @Component
 @RequiredArgsConstructor
@@ -29,131 +28,76 @@ public class PrivateBookMatcher {
     private final TradeExecutor tradeExecutor;
 
     public List<Trade> matchFully(TradingOrder order) {
-        List<Trade> trades = new ArrayList<>();
-        trades.addAll(matchAgainstOwnBook(order));
-        if (order.getRemainingQuantity() > 0 && order.isActive()) {
-            trades.addAll(matchAgainstResidualMarket(order));
-        }
-        return trades;
-    }
-
-    public List<Trade> matchAgainstOwnBook(TradingOrder order) {
         if (order == null || order.getUser() == null || !order.isActive()) {
             return List.of();
         }
-        Long userId = order.getUser().getId();
-        String instrumentCode = order.getInstrumentCode();
-        List<Trade> trades = new ArrayList<>();
 
-        if (order.getSide() == OrderSide.BUY) {
-            List<TradingOrder> sells = tradingOrderRepository.findOwnRestingSellsForMatch(
-                    userId, instrumentCode, order.getOrderPrice(), ACTIVE_STATUSES, order.getId());
-            for (TradingOrder sell : sells) {
-                if (!order.isActive()) {
-                    break;
-                }
-                TradingOrder lockedSell = tradingOrderRepository.findByIdForUpdate(sell.getId()).orElse(null);
-                if (lockedSell == null || !lockedSell.isActive() || lockedSell.getSide() != OrderSide.SELL) {
-                    continue;
-                }
-                if (order.getOrderPrice().compareTo(lockedSell.getOrderPrice()) < 0) {
-                    break;
-                }
-                long qty = Math.min(order.getRemainingQuantity(), lockedSell.getRemainingQuantity());
-                if (qty <= 0) {
-                    continue;
-                }
-                // Maker (resting sell) price
-                BigDecimal price = lockedSell.getOrderPrice();
-                Trade trade = tradeExecutor.executeTrade(order, lockedSell, qty, price);
-                if (trade != null) {
-                    trades.add(trade);
-                }
-            }
-        } else {
-            List<TradingOrder> buys = tradingOrderRepository.findOwnRestingBuysForMatch(
-                    userId, instrumentCode, order.getOrderPrice(), ACTIVE_STATUSES, order.getId());
-            for (TradingOrder buy : buys) {
-                if (!order.isActive()) {
-                    break;
-                }
-                TradingOrder lockedBuy = tradingOrderRepository.findByIdForUpdate(buy.getId()).orElse(null);
-                if (lockedBuy == null || !lockedBuy.isActive() || lockedBuy.getSide() != OrderSide.BUY) {
-                    continue;
-                }
-                if (order.getOrderPrice().compareTo(lockedBuy.getOrderPrice()) > 0) {
-                    break;
-                }
-                long qty = Math.min(order.getRemainingQuantity(), lockedBuy.getRemainingQuantity());
-                if (qty <= 0) {
-                    continue;
-                }
-                // Maker (resting buy) price
-                BigDecimal price = lockedBuy.getOrderPrice();
-                Trade trade = tradeExecutor.executeTrade(lockedBuy, order, qty, price);
-                if (trade != null) {
-                    trades.add(trade);
-                }
-            }
-        }
-        return trades;
+        return order.getSide() == OrderSide.BUY
+                ? matchBuyByBestPrice(order)
+                : matchSellByBestPrice(order);
     }
 
-    public List<Trade> matchAgainstResidualMarket(TradingOrder order) {
-        if (order == null || order.getUser() == null || !order.isActive()) {
-            return List.of();
-        }
+    /**
+     * Match an incoming buy against one combined private ask book. Public levels and the
+     * user's own resting sells compete by price; public liquidity wins ties because it was
+     * already present in the market snapshot before the incoming order arrived.
+     */
+    private List<Trade> matchBuyByBestPrice(TradingOrder order) {
         Long userId = order.getUser().getId();
         String instrumentCode = order.getInstrumentCode();
+        List<TradingOrder> ownSells = tradingOrderRepository.findOwnRestingSellsForMatch(
+                userId, instrumentCode, order.getOrderPrice(), ACTIVE_STATUSES, order.getId());
+        List<ResidualBookLevel> publicAsks = privateBookStateService.loadResidualAskLevels(userId, instrumentCode);
         List<Trade> trades = new ArrayList<>();
 
-        if (order.getSide() == OrderSide.BUY) {
-            List<ResidualBookLevel> asks = privateBookStateService.loadResidualAskLevels(userId, instrumentCode);
-            for (ResidualBookLevel level : asks) {
-                if (!order.isActive()) {
-                    break;
-                }
-                if (order.getOrderPrice().compareTo(level.price()) < 0) {
-                    break;
-                }
-                long matchQuantity = level.take(order.getRemainingQuantity());
-                if (matchQuantity <= 0) {
-                    continue;
-                }
-                TradingOrder marketSell = marketMakerService.createCompletedCounterOrder(
-                        order, OrderSide.SELL, matchQuantity, level.price());
-                Trade trade = tradeExecutor.executeTrade(order, marketSell, matchQuantity, level.price());
-                if (trade != null) {
-                    privateBookStateService.consume(userId, instrumentCode, BookSide.ASK, level.price(), matchQuantity);
-                    trades.add(trade);
+        int ownIndex = 0;
+        int publicIndex = 0;
+        TradingOrder lockedOwnSell = null;
+        while (order.isActive()) {
+            while (lockedOwnSell == null && ownIndex < ownSells.size()) {
+                TradingOrder candidate = ownSells.get(ownIndex);
+                TradingOrder locked = tradingOrderRepository.findByIdForUpdate(candidate.getId()).orElse(null);
+                if (locked != null && locked.isActive() && locked.getSide() == OrderSide.SELL
+                        && order.getOrderPrice().compareTo(locked.getOrderPrice()) >= 0) {
+                    lockedOwnSell = locked;
                 } else {
-                    marketMakerService.cancelUnmatchedCounterOrder(marketSell);
-                    // Put residual back for this in-memory level; DB consumption was not recorded.
-                    break;
+                    ownIndex++;
                 }
             }
-        } else {
-            List<ResidualBookLevel> bids = privateBookStateService.loadResidualBidLevels(userId, instrumentCode);
-            for (ResidualBookLevel level : bids) {
-                if (!order.isActive()) {
+            while (publicIndex < publicAsks.size()
+                    && publicAsks.get(publicIndex).residualVolume() <= 0) {
+                publicIndex++;
+            }
+
+            ResidualBookLevel publicAsk = publicIndex < publicAsks.size()
+                    && order.getOrderPrice().compareTo(publicAsks.get(publicIndex).price()) >= 0
+                    ? publicAsks.get(publicIndex)
+                    : null;
+            if (lockedOwnSell == null && publicAsk == null) {
+                break;
+            }
+
+            boolean usePublic = publicAsk != null && (lockedOwnSell == null
+                    || publicAsk.price().compareTo(lockedOwnSell.getOrderPrice()) <= 0);
+            if (usePublic) {
+                if (!executeAgainstPublicLevel(
+                        order, OrderSide.SELL, BookSide.ASK, publicAsk, trades)) {
                     break;
                 }
-                if (order.getOrderPrice().compareTo(level.price()) > 0) {
-                    break;
+                if (publicAsk.residualVolume() <= 0) {
+                    publicIndex++;
                 }
-                long matchQuantity = level.take(order.getRemainingQuantity());
-                if (matchQuantity <= 0) {
-                    continue;
-                }
-                TradingOrder marketBuy = marketMakerService.createCompletedCounterOrder(
-                        order, OrderSide.BUY, matchQuantity, level.price());
-                Trade trade = tradeExecutor.executeTrade(marketBuy, order, matchQuantity, level.price());
+            } else {
+                long quantity = Math.min(order.getRemainingQuantity(), lockedOwnSell.getRemainingQuantity());
+                BigDecimal executionPrice = ownCrossExecutionPrice(order, lockedOwnSell);
+                Trade trade = tradeExecutor.executeTrade(
+                        order, lockedOwnSell, quantity, executionPrice);
                 if (trade != null) {
-                    privateBookStateService.consume(userId, instrumentCode, BookSide.BID, level.price(), matchQuantity);
                     trades.add(trade);
-                } else {
-                    marketMakerService.cancelUnmatchedCounterOrder(marketBuy);
-                    break;
+                }
+                if (trade == null || !lockedOwnSell.isActive()) {
+                    ownIndex++;
+                    lockedOwnSell = null;
                 }
             }
         }
@@ -161,53 +105,108 @@ public class PrivateBookMatcher {
     }
 
     /**
-     * Continuously matches the user's best bid against best ask while they cross.
+     * Same combined-book rule as {@link #matchBuyByBestPrice(TradingOrder)}, for sells.
      */
-    public List<Trade> collapseSelfCrosses(Long userId, String instrumentCode) {
+    private List<Trade> matchSellByBestPrice(TradingOrder order) {
+        Long userId = order.getUser().getId();
+        String instrumentCode = order.getInstrumentCode();
+        List<TradingOrder> ownBuys = tradingOrderRepository.findOwnRestingBuysForMatch(
+                userId, instrumentCode, order.getOrderPrice(), ACTIVE_STATUSES, order.getId());
+        List<ResidualBookLevel> publicBids = privateBookStateService.loadResidualBidLevels(userId, instrumentCode);
         List<Trade> trades = new ArrayList<>();
-        while (true) {
-            List<TradingOrder> buys = tradingOrderRepository
-                    .findActiveBuysPriceTime(userId, instrumentCode, ACTIVE_STATUSES);
-            List<TradingOrder> sells = tradingOrderRepository
-                    .findActiveSellsPriceTime(userId, instrumentCode, ACTIVE_STATUSES);
-            if (buys.isEmpty() || sells.isEmpty()) {
+
+        int ownIndex = 0;
+        int publicIndex = 0;
+        TradingOrder lockedOwnBuy = null;
+        while (order.isActive()) {
+            while (lockedOwnBuy == null && ownIndex < ownBuys.size()) {
+                TradingOrder candidate = ownBuys.get(ownIndex);
+                TradingOrder locked = tradingOrderRepository.findByIdForUpdate(candidate.getId()).orElse(null);
+                if (locked != null && locked.isActive() && locked.getSide() == OrderSide.BUY
+                        && order.getOrderPrice().compareTo(locked.getOrderPrice()) <= 0) {
+                    lockedOwnBuy = locked;
+                } else {
+                    ownIndex++;
+                }
+            }
+            while (publicIndex < publicBids.size()
+                    && publicBids.get(publicIndex).residualVolume() <= 0) {
+                publicIndex++;
+            }
+
+            ResidualBookLevel publicBid = publicIndex < publicBids.size()
+                    && order.getOrderPrice().compareTo(publicBids.get(publicIndex).price()) <= 0
+                    ? publicBids.get(publicIndex)
+                    : null;
+            if (lockedOwnBuy == null && publicBid == null) {
                 break;
             }
-            TradingOrder bestBuy = buys.getFirst();
-            TradingOrder bestSell = sells.getFirst();
-            if (bestBuy.getOrderPrice().compareTo(bestSell.getOrderPrice()) < 0) {
-                break;
+
+            boolean usePublic = publicBid != null && (lockedOwnBuy == null
+                    || publicBid.price().compareTo(lockedOwnBuy.getOrderPrice()) >= 0);
+            if (usePublic) {
+                if (!executeAgainstPublicLevel(
+                        order, OrderSide.BUY, BookSide.BID, publicBid, trades)) {
+                    break;
+                }
+                if (publicBid.residualVolume() <= 0) {
+                    publicIndex++;
+                }
+            } else {
+                long quantity = Math.min(order.getRemainingQuantity(), lockedOwnBuy.getRemainingQuantity());
+                BigDecimal executionPrice = ownCrossExecutionPrice(lockedOwnBuy, order);
+                Trade trade = tradeExecutor.executeTrade(
+                        lockedOwnBuy, order, quantity, executionPrice);
+                if (trade != null) {
+                    trades.add(trade);
+                }
+                if (trade == null || !lockedOwnBuy.isActive()) {
+                    ownIndex++;
+                    lockedOwnBuy = null;
+                }
             }
-            TradingOrder lockedBuy = tradingOrderRepository.findByIdForUpdate(bestBuy.getId()).orElse(null);
-            TradingOrder lockedSell = tradingOrderRepository.findByIdForUpdate(bestSell.getId()).orElse(null);
-            if (lockedBuy == null || lockedSell == null || !lockedBuy.isActive() || !lockedSell.isActive()) {
-                break;
-            }
-            if (lockedBuy.getOrderPrice().compareTo(lockedSell.getOrderPrice()) < 0) {
-                break;
-            }
-            long qty = Math.min(lockedBuy.getRemainingQuantity(), lockedSell.getRemainingQuantity());
-            if (qty <= 0) {
-                break;
-            }
-            // Older resting order is maker when both already rest; prefer earlier order time.
-            BigDecimal price = lockedBuy.getOrderTime().isBefore(lockedSell.getOrderTime())
-                    || lockedBuy.getOrderTime().equals(lockedSell.getOrderTime())
-                    ? lockedBuy.getOrderPrice()
-                    : lockedSell.getOrderPrice();
-            // Clamp to valid range between sell and buy
-            if (price.compareTo(lockedSell.getOrderPrice()) < 0) {
-                price = lockedSell.getOrderPrice();
-            }
-            if (price.compareTo(lockedBuy.getOrderPrice()) > 0) {
-                price = lockedBuy.getOrderPrice();
-            }
-            Trade trade = tradeExecutor.executeTrade(lockedBuy, lockedSell, qty, price);
-            if (trade == null) {
-                break;
-            }
-            trades.add(trade);
         }
         return trades;
     }
+
+    private boolean executeAgainstPublicLevel(
+            TradingOrder userOrder,
+            OrderSide counterSide,
+            BookSide publicBookSide,
+            ResidualBookLevel level,
+            List<Trade> trades) {
+        long matchQuantity = level.take(userOrder.getRemainingQuantity());
+        if (matchQuantity <= 0) {
+            return true;
+        }
+        TradingOrder counterOrder = marketMakerService.createCompletedCounterOrder(
+                userOrder, counterSide, matchQuantity, level.price());
+        Trade trade = userOrder.getSide() == OrderSide.BUY
+                ? tradeExecutor.executeTrade(userOrder, counterOrder, matchQuantity, level.price())
+                : tradeExecutor.executeTrade(counterOrder, userOrder, matchQuantity, level.price());
+        if (trade == null) {
+            marketMakerService.cancelUnmatchedCounterOrder(counterOrder);
+            return false;
+        }
+        privateBookStateService.consume(
+                userOrder.getUser().getId(), userOrder.getInstrumentCode(),
+                publicBookSide, level.price(), matchQuantity);
+        trades.add(trade);
+        return true;
+    }
+
+    private BigDecimal ownCrossExecutionPrice(TradingOrder buyOrder, TradingOrder sellOrder) {
+        BigDecimal price = !buyOrder.getOrderTime().isAfter(sellOrder.getOrderTime())
+                ? buyOrder.getOrderPrice()
+                : sellOrder.getOrderPrice();
+        // Defensive clamp: the execution price of a crossed pair must stay between both limits.
+        if (price.compareTo(sellOrder.getOrderPrice()) < 0) {
+            return sellOrder.getOrderPrice();
+        }
+        if (price.compareTo(buyOrder.getOrderPrice()) > 0) {
+            return buyOrder.getOrderPrice();
+        }
+        return price;
+    }
+
 }

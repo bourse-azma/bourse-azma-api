@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 public class MarketStateService {
@@ -14,14 +16,28 @@ public class MarketStateService {
     private final TsetmcMarketClient tsetmcMarketClient;
 
     public boolean isMarketOpen() {
-        return isMarketOpen(1) || isMarketOpen(2);
+        return getSessionState() == MarketSessionState.OPEN;
     }
 
-    private boolean isMarketOpen(int marketId) {
+    public MarketSessionState getSessionState() {
+        Optional<Boolean> bourse = loadOpenState(1);
+        Optional<Boolean> farabourse = loadOpenState(2);
+        if (bourse.orElse(false) || farabourse.orElse(false)) {
+            return MarketSessionState.OPEN;
+        }
+        // Requiring both sources prevents a transient TSETMC/API outage from being treated
+        // as an end-of-session event that would expire every user's orders.
+        if (bourse.isPresent() && farabourse.isPresent()) {
+            return MarketSessionState.CLOSED;
+        }
+        return MarketSessionState.UNKNOWN;
+    }
+
+    private Optional<Boolean> loadOpenState(int marketId) {
         return tsetmcMarketClient.getMarketOverview(marketId)
                 .map(this::extractMarketStateTitle)
-                .map(OPEN_STATE_TITLE::equals)
-                .orElse(false);
+                .filter(title -> !title.isBlank())
+                .map(OPEN_STATE_TITLE::equals);
     }
 
     private String extractMarketStateTitle(JsonNode result) {

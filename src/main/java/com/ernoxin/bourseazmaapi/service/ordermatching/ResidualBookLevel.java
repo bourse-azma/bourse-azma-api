@@ -1,6 +1,7 @@
 package com.ernoxin.bourseazmaapi.service.ordermatching;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /**
  * One price level of residual public liquidity inside a user's private simulation.
@@ -35,13 +36,19 @@ public final class ResidualBookLevel {
     }
 
     public long displayOrderCount() {
-        if (residualVolume <= 0) {
+        if (residualVolume <= 0 || publicOrderCount <= 0 || publicVolume <= 0) {
             return 0L;
         }
         if (residualVolume >= publicVolume) {
             return publicOrderCount;
         }
-        return Math.max(1L, publicOrderCount);
+        // The public feed exposes only aggregate volume/count, not each individual order.
+        // Scale the displayed count with the remaining volume instead of leaving an obviously
+        // stale full count after a private fill. Ceiling keeps a non-empty level non-empty.
+        return BigDecimal.valueOf(publicOrderCount)
+                .multiply(BigDecimal.valueOf(residualVolume))
+                .divide(BigDecimal.valueOf(publicVolume), 0, RoundingMode.CEILING)
+                .longValueExact();
     }
 
     public long take(long requested) {

@@ -23,17 +23,27 @@ public class MarketLiquidityService {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     private Optional<com.fasterxml.jackson.databind.JsonNode> getCachedBestLimits(String instrumentCode) {
-        CachedPayload cached = bestLimitsCache.get(instrumentCode);
-        long now = System.currentTimeMillis();
-        if (cached != null && (now - cached.timestamp()) < CACHE_TTL_MS) {
-            return cached.payload();
+        String normalizedCode = instrumentCode == null ? "" : instrumentCode.trim();
+        if (normalizedCode.isEmpty()) {
+            return Optional.empty();
         }
-        Optional<com.fasterxml.jackson.databind.JsonNode> fresh = tsetmcMarketClient.getBestLimits(instrumentCode);
-        bestLimitsCache.put(instrumentCode, new CachedPayload(fresh, now));
+
+        // compute serializes a cache miss only for this instrument. This avoids a
+        // thundering herd against TSETMC while unrelated instruments still load in parallel.
+        CachedPayload loaded = bestLimitsCache.compute(normalizedCode, (key, cached) -> {
+            long now = System.currentTimeMillis();
+            if (cached != null && (now - cached.timestamp()) < CACHE_TTL_MS) {
+                return cached;
+            }
+            Optional<com.fasterxml.jackson.databind.JsonNode> fresh = tsetmcMarketClient.getBestLimits(key);
+            return new CachedPayload(fresh, System.currentTimeMillis());
+        });
+
         if (bestLimitsCache.size() > 200) {
+            long now = System.currentTimeMillis();
             bestLimitsCache.entrySet().removeIf(e -> (now - e.getValue().timestamp()) >= CACHE_TTL_MS);
         }
-        return fresh;
+        return loaded.payload();
     }
 
     public List<MarketLiquidityLevel> getAskLevels(String instrumentCode) {

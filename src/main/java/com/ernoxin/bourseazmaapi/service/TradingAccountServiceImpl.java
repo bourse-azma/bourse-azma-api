@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.service;
 import com.ernoxin.bourseazmaapi.config.TradingRulesProperties;
 import com.ernoxin.bourseazmaapi.dto.*;
 import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
+import com.ernoxin.bourseazmaapi.exception.AccountBlockedException;
 import com.ernoxin.bourseazmaapi.exception.ResourceNotFoundException;
 import com.ernoxin.bourseazmaapi.model.*;
 import com.ernoxin.bourseazmaapi.repository.PortfolioHoldingRepository;
@@ -90,6 +91,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     public CreateOrderResult createOrder(Long userId, CreateTradingOrderRequest request) {
         User user = userRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("کاربر یافت نشد."));
+        ensureAccountCanTrade(user);
 
         String instrumentCode = request.getInstrumentCode().trim();
         if (!uiDebugMode) {
@@ -370,6 +372,15 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private void ensureUserExists(Long userId) {
         if (!userRepository.existsById(userId)) {
             throw new IllegalArgumentException("کاربر یافت نشد.");
+        }
+    }
+
+    private void ensureAccountCanTrade(User user) {
+        if (user.getDeletedAt() != null) {
+            throw new ResourceNotFoundException("کاربر یافت نشد.");
+        }
+        if (user.isBlocked()) {
+            throw new AccountBlockedException();
         }
     }
 

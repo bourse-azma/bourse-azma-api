@@ -75,8 +75,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Transactional
     public SupportRequestDetailResponse getCurrentUserRequestDetail(Long id) {
         Long userId = SecurityUtils.currentUserId();
-        SupportRequest request = supportRequestRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest request = findUserRequestForUpdate(id, userId);
         messageHandler.markMessagesSeenByUser(request);
         return dtoMapper.toDetailDto(request, false, false);
     }
@@ -85,8 +84,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Transactional
     public SupportRequestMessageResponse addUserMessage(Long id, SupportRequestMessageCreateRequest request) {
         Long userId = SecurityUtils.currentUserId();
-        SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findUserRequestForUpdate(id, userId);
         validator.ensureUserCanReply(supportRequest);
 
         User user = userRepository.getReferenceById(userId);
@@ -99,8 +97,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Transactional
     public SupportRequestMessageResponse editUserMessage(Long id, Long messageId, SupportRequestMessageUpdateRequest request) {
         Long userId = SecurityUtils.currentUserId();
-        SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findUserRequestForUpdate(id, userId);
 
         SupportRequestMessage message = supportRequestMessageRepository.findByIdAndSupportRequestId(messageId, id)
                 .orElseThrow(() -> new ResourceNotFoundException("پیام مورد نظر یافت نشد."));
@@ -121,8 +118,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Transactional
     public SupportRequestMessageResponse editUserInitialMessage(Long id, SupportRequestMessageUpdateRequest request) {
         Long userId = SecurityUtils.currentUserId();
-        SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findUserRequestForUpdate(id, userId);
 
         validator.ensureTicketOpenForUserEdit(supportRequest);
         validator.ensureInitialMessageEditable(supportRequest);
@@ -137,16 +133,14 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Transactional
     public SupportRequestResponse closeCurrentUserRequest(Long id) {
         Long userId = SecurityUtils.currentUserId();
-        SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findUserRequestForUpdate(id, userId);
         return stateHandler.closeRequest(supportRequest, false, SupportRequestClosedBy.USER);
     }
 
     @Override
     @Transactional
     public SupportRequestResponse closeAdminRequest(Long id) {
-        SupportRequest supportRequest = supportRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findRequestForUpdate(id);
         return stateHandler.closeRequest(supportRequest, true, SupportRequestClosedBy.ADMIN);
     }
 
@@ -154,8 +148,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Transactional
     public SupportRequestResponse rateRequest(Long id, SupportRequestRatingRequest request) {
         Long userId = SecurityUtils.currentUserId();
-        SupportRequest supportRequest = supportRequestRepository.findByIdAndUserId(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findUserRequestForUpdate(id, userId);
 
         if (supportRequest.getRating() != null) {
             throw new IllegalArgumentException("این تیکت قبلا امتیازدهی شده است.");
@@ -204,8 +197,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Override
     @Transactional
     public SupportRequestDetailResponse getAdminRequestDetail(Long id) {
-        SupportRequest request = supportRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest request = findRequestForUpdate(id);
         messageHandler.markMessagesSeenByAdmin(request);
         return dtoMapper.toDetailDto(request, true, true);
     }
@@ -213,8 +205,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Override
     @Transactional
     public SupportRequestMessageResponse addAdminMessage(Long id, SupportRequestMessageCreateRequest request) {
-        SupportRequest supportRequest = supportRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findRequestForUpdate(id);
         validator.ensureAdminCanReply(supportRequest);
 
         Long adminId = SecurityUtils.currentUserId();
@@ -231,8 +222,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Override
     @Transactional
     public SupportRequestMessageResponse editAdminMessage(Long id, Long messageId, SupportRequestMessageUpdateRequest request) {
-        SupportRequest supportRequest = supportRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findRequestForUpdate(id);
 
         Long adminId = SecurityUtils.currentUserId();
         SupportRequestMessage message = supportRequestMessageRepository.findByIdAndSupportRequestId(messageId, id)
@@ -252,8 +242,7 @@ public class SupportRequestServiceImpl implements SupportRequestService {
     @Override
     @Transactional
     public SupportRequestResponse updateStatus(Long id, SupportRequestStatusUpdateRequest request) {
-        SupportRequest supportRequest = supportRequestRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+        SupportRequest supportRequest = findRequestForUpdate(id);
 
         SupportRequestStatus newStatus = textNormalizer.normalizeIncomingStatus(request.getStatus());
         SupportRequestStatus currentStatus = textNormalizer.normalizeStatus(supportRequest.getStatus());
@@ -270,5 +259,15 @@ public class SupportRequestServiceImpl implements SupportRequestService {
         SupportRequest saved = supportRequestRepository.save(supportRequest);
         Map<Long, SupportRequestStatsLoader.MessageStats> statsById = statsLoader.loadMessageStats(List.of(saved.getId()));
         return dtoMapper.toSummaryDto(saved, true, statsLoader.statsFor(saved, statsById), false);
+    }
+
+    private SupportRequest findUserRequestForUpdate(Long id, Long userId) {
+        return supportRequestRepository.findByIdAndUserIdForUpdate(id, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
+    }
+
+    private SupportRequest findRequestForUpdate(Long id) {
+        return supportRequestRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("تیکت مورد نظر یافت نشد."));
     }
 }

@@ -15,13 +15,15 @@ class LiquidityConsumptionResetSchedulerTest {
     @Test
     void deletesOnlyConsumptionsFromBeforeTheCurrentTehranDay() {
         UserLiquidityConsumptionRepository repository = mock(UserLiquidityConsumptionRepository.class);
+        TradingSessionLifecycleService lifecycleService = mock(TradingSessionLifecycleService.class);
         ZoneId tehran = ZoneId.of("Asia/Tehran");
         Clock clock = Clock.fixed(Instant.parse("2026-07-16T08:30:00Z"), tehran);
         LiquidityConsumptionResetScheduler scheduler =
-                new LiquidityConsumptionResetScheduler(repository, clock);
+                new LiquidityConsumptionResetScheduler(repository, lifecycleService, clock);
 
         scheduler.resetPreviousDays();
 
         verify(repository).deleteAllUpdatedBefore(Instant.parse("2026-07-15T20:30:00Z"));
+        verify(lifecycleService).expireOrdersBefore(Instant.parse("2026-07-15T20:30:00Z"));
     }
 }

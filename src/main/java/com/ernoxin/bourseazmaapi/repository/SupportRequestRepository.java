@@ -4,9 +4,9 @@ import com.ernoxin.bourseazmaapi.model.SupportRequest;
 import com.ernoxin.bourseazmaapi.model.SupportRequestCategory;
 import com.ernoxin.bourseazmaapi.model.SupportRequestPriority;
 import com.ernoxin.bourseazmaapi.model.SupportRequestStatus;
-import org.springframework.data.jpa.repository.EntityGraph;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.*;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -25,6 +25,16 @@ public interface SupportRequestRepository extends JpaRepository<SupportRequest, 
     List<SupportRequest> findAllByUserIdOrderByCreatedAtDesc(Long userId);
 
     Optional<SupportRequest> findByIdAndUserId(Long id, Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT request FROM SupportRequest request WHERE request.id = :id")
+    Optional<SupportRequest> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT request FROM SupportRequest request " +
+            "WHERE request.id = :id AND request.user.id = :userId")
+    Optional<SupportRequest> findByIdAndUserIdForUpdate(@Param("id") Long id,
+                                                        @Param("userId") Long userId);
 
     @EntityGraph(attributePaths = "user")
     List<SupportRequest> findAllByOrderByCreatedAtDesc();

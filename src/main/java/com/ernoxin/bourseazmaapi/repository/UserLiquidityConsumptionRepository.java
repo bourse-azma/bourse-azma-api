@@ -17,6 +17,11 @@ import java.util.Optional;
 @Repository
 public interface UserLiquidityConsumptionRepository extends JpaRepository<UserLiquidityConsumption, Long> {
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("DELETE FROM UserLiquidityConsumption")
+    int deleteAllForSessionReset();
+
     List<UserLiquidityConsumption> findAllByUserIdAndInstrumentCode(Long userId, String instrumentCode);
 
     Optional<UserLiquidityConsumption> findByUserIdAndInstrumentCodeAndBookSideAndPrice(

@@ -38,8 +38,8 @@ public class PrivateOrderBookService {
     public PrivateOrderBookResponse getOrderBook(Long userId, String instrumentCode) {
         String normalizedCode = normalizeInstrumentCode(instrumentCode);
 
-        Map<BigDecimal, MutableLevel> bids = new TreeMap<>(Comparator.reverseOrder());
-        Map<BigDecimal, MutableLevel> asks = new TreeMap<>();
+        NavigableMap<BigDecimal, MutableLevel> bids = new TreeMap<>(Comparator.reverseOrder());
+        NavigableMap<BigDecimal, MutableLevel> asks = new TreeMap<>();
 
         for (ResidualBookLevel level : privateBookStateService.loadResidualBidLevels(userId, normalizedCode)) {
             mergeResidualLevel(bids, level);
@@ -51,19 +51,31 @@ public class PrivateOrderBookService {
         List<TradingOrder> ownOrders = tradingOrderRepository.findActiveOrdersForPrivateBook(
                 userId, normalizedCode, VISIBLE_STATUSES);
         for (TradingOrder order : ownOrders) {
+            if (order == null || order.getSide() == null || order.getOrderPrice() == null
+                    || order.getRemainingQuantity() == null || order.getRemainingQuantity() <= 0) {
+                continue;
+            }
+
             Map<BigDecimal, MutableLevel> side = order.getSide() == OrderSide.BUY ? bids : asks;
             BigDecimal price = order.getOrderPrice().setScale(2, java.math.RoundingMode.HALF_UP);
             MutableLevel level = side.computeIfAbsent(price, ignored -> new MutableLevel());
             level.volume += order.getRemainingQuantity();
             level.orderCount++;
             level.ownVolume += order.getRemainingQuantity();
+            Instant orderTime = order.getOrderTime() != null ? order.getOrderTime() : Instant.EPOCH;
+            if (level.latestOwnOrderTime == null || orderTime.isAfter(level.latestOwnOrderTime)) {
+                level.latestOwnOrderTime = orderTime;
+            }
         }
 
-        List<Map.Entry<BigDecimal, MutableLevel>> bidLevels = firstLevels(bids);
-        List<Map.Entry<BigDecimal, MutableLevel>> askLevels = firstLevels(asks);
-        int rowCount = Math.max(bidLevels.size(), askLevels.size());
-        List<PrivateOrderBookLevelResponse> rows = new ArrayList<>(rowCount);
-        for (int index = 0; index < rowCount; index++) {
+        // This is a personalized five-row view, not a raw top-five market snapshot. Every own
+        // price level gets a display slot first; remaining slots are filled from the best public
+        // levels. Prices are never rewritten or merged into a neighbouring level.
+        List<Map.Entry<BigDecimal, MutableLevel>> bidLevels = displayLevels(bids);
+        List<Map.Entry<BigDecimal, MutableLevel>> askLevels = displayLevels(asks);
+
+        List<PrivateOrderBookLevelResponse> rows = new ArrayList<>(DISPLAY_LEVELS);
+        for (int index = 0; index < DISPLAY_LEVELS; index++) {
             Map.Entry<BigDecimal, MutableLevel> bid = entryAt(bidLevels, index);
             Map.Entry<BigDecimal, MutableLevel> ask = entryAt(askLevels, index);
             rows.add(new PrivateOrderBookLevelResponse(
@@ -88,8 +100,39 @@ public class PrivateOrderBookService {
         target.orderCount += source.displayOrderCount();
     }
 
-    private List<Map.Entry<BigDecimal, MutableLevel>> firstLevels(Map<BigDecimal, MutableLevel> levels) {
-        return levels.entrySet().stream().limit(DISPLAY_LEVELS).toList();
+    private List<Map.Entry<BigDecimal, MutableLevel>> displayLevels(
+            NavigableMap<BigDecimal, MutableLevel> levels) {
+        List<Map.Entry<BigDecimal, MutableLevel>> selected = new ArrayList<>(DISPLAY_LEVELS);
+        Set<BigDecimal> selectedPrices = new HashSet<>();
+
+        // If a user has more than five distinct own prices, the most recently submitted
+        // levels stay visible. The complete set of orders remains available in the orders tab.
+        levels.entrySet().stream()
+                .filter(entry -> entry.getValue().ownVolume > 0)
+                .sorted(Comparator.comparing(
+                        (Map.Entry<BigDecimal, MutableLevel> entry) -> entry.getValue().latestOwnOrderTime,
+                        Comparator.nullsFirst(Comparator.naturalOrder())
+                ).reversed())
+                .limit(DISPLAY_LEVELS)
+                .forEach(entry -> {
+                    selected.add(entry);
+                    selectedPrices.add(entry.getKey());
+                });
+
+        for (Map.Entry<BigDecimal, MutableLevel> entry : levels.entrySet()) {
+            if (selected.size() >= DISPLAY_LEVELS) {
+                break;
+            }
+            if (selectedPrices.add(entry.getKey())) {
+                selected.add(entry);
+            }
+        }
+
+        Comparator<? super BigDecimal> priceComparator = levels.comparator();
+        selected.sort((left, right) -> priceComparator == null
+                ? left.getKey().compareTo(right.getKey())
+                : priceComparator.compare(left.getKey(), right.getKey()));
+        return List.copyOf(selected);
     }
 
     private Map.Entry<BigDecimal, MutableLevel> entryAt(
@@ -109,5 +152,6 @@ public class PrivateOrderBookService {
         private long volume;
         private long orderCount;
         private long ownVolume;
+        private Instant latestOwnOrderTime;
     }
 }

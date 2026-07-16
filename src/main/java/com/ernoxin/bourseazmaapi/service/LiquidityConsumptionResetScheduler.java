@@ -18,19 +18,23 @@ import java.time.ZoneId;
 public class LiquidityConsumptionResetScheduler {
 
     private final UserLiquidityConsumptionRepository consumptionRepository;
+    private final TradingSessionLifecycleService sessionLifecycleService;
     private final Clock clock;
 
     @Autowired
     public LiquidityConsumptionResetScheduler(
             UserLiquidityConsumptionRepository consumptionRepository,
+            TradingSessionLifecycleService sessionLifecycleService,
             @Value("${app.liquidity-consumption.reset-zone:Asia/Tehran}") String resetZone) {
-        this(consumptionRepository, Clock.system(ZoneId.of(resetZone)));
+        this(consumptionRepository, sessionLifecycleService, Clock.system(ZoneId.of(resetZone)));
     }
 
     LiquidityConsumptionResetScheduler(
             UserLiquidityConsumptionRepository consumptionRepository,
+            TradingSessionLifecycleService sessionLifecycleService,
             Clock clock) {
         this.consumptionRepository = consumptionRepository;
+        this.sessionLifecycleService = sessionLifecycleService;
         this.clock = clock;
     }
 
@@ -43,7 +47,11 @@ public class LiquidityConsumptionResetScheduler {
                 .toLocalDate()
                 .atStartOfDay(clock.getZone())
                 .toInstant();
+        int expiredOrders = sessionLifecycleService.expireOrdersBefore(startOfToday);
         int deleted = consumptionRepository.deleteAllUpdatedBefore(startOfToday);
+        if (expiredOrders > 0) {
+            log.info("Expired {} stale daily trading order(s)", expiredOrders);
+        }
         if (deleted > 0) {
             log.info("Cleared {} stale user liquidity consumption records", deleted);
         }

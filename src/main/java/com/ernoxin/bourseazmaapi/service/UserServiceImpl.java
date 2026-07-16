@@ -107,10 +107,11 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public UserResponse update(UserUpdateRequest request) {
         validateOwnerOrAdmin(request.getId());
         normalizeRequestForPersistence(request);
-        User user = findById(request.getId());
+        User user = findActiveUserForUpdate(request.getId());
         validateUniqueFieldsForUpdate(request.getId(), request.getUsername(),
                 request.getPhoneNumber(), request.getEmail());
         userMapper.updateEntity(request, user);
@@ -123,10 +124,11 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public UserResponse updateCurrentUser(UserSelfUpdateRequest request) {
         Long userId = SecurityUtils.currentUserId();
         normalizeRequestForPersistence(request);
-        User user = findById(userId);
+        User user = findActiveUserForUpdate(userId);
         validateUniqueFieldsForUpdate(userId, request.getUsername(),
                 request.getPhoneNumber(), request.getEmail());
         userMapper.updateEntity(request, user);
@@ -158,7 +160,10 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void delete(Long id) {
         validateOwnerOrAdmin(id);
-        User user = findById(id);
+        // Account lifecycle changes use the same account lock as order and wallet
+        // mutations. Whichever operation wins, a subsequent block/delete either
+        // cancels the new orders or makes the mutation reject the unavailable user.
+        User user = findMutableRegularUserForUpdate(id);
         cancelActiveOrdersForUser(id);
         user.setBlocked(true);
         user.setBlockedAt(Instant.now());
@@ -191,10 +196,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse setBlocked(Long id, boolean blocked, String reason) {
-        User user = findById(id);
-        if (user.getRole() != UserRole.USER || user.getDeletedAt() != null) {
-            throw new ResourceNotFoundException("کاربر مورد نظر یافت نشد.");
-        }
+        User user = findMutableRegularUserForUpdate(id);
         user.setBlocked(blocked);
         user.setBlockedAt(blocked ? Instant.now() : null);
         String normalizedReason = reason == null ? null : reason.trim();
@@ -207,8 +209,21 @@ public class UserServiceImpl implements UserService {
         return userMapper.toDto(userRepository.save(user));
     }
 
+    private User findMutableRegularUserForUpdate(Long id) {
+        return userRepository.findByIdForUpdate(id)
+                .filter(user -> user.getRole() == UserRole.USER)
+                .filter(user -> user.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("کاربر مورد نظر یافت نشد."));
+    }
+
     private User findById(Long id) {
         return userRepository.findById(id)
+                .filter(user -> user.getDeletedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("کاربر مورد نظر یافت نشد."));
+    }
+
+    private User findActiveUserForUpdate(Long id) {
+        return userRepository.findByIdForUpdate(id)
                 .filter(user -> user.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("کاربر مورد نظر یافت نشد."));
     }

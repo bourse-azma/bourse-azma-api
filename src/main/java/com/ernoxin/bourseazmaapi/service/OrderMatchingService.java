@@ -28,7 +28,7 @@ public class OrderMatchingService {
 
     /**
      * Match the given incoming order inside the user's private book:
-     * own opposite resting orders first, then residual public market depth.
+     * own opposite orders and residual public depth compete under one price-time policy.
      * Application users are never counterparties to one another.
      */
     @Transactional
@@ -62,14 +62,14 @@ public class OrderMatchingService {
             return List.of();
         }
         List<Trade> allTrades = new ArrayList<>();
-        allTrades.addAll(privateBookMatcher.collapseSelfCrosses(userId, instrumentCode));
 
-        // Buys: best price first, then earliest time
+        // Each order is matched against one combined own + public book. Processing the
+        // best-priced orders first preserves price-time priority across a scheduler pass.
         for (Long orderId : tradingOrderRepository.findActiveBuyOrderIdsForMatching(
                 userId, instrumentCode, ACTIVE_STATUSES)) {
             TradingOrder order = tradingOrderRepository.findByIdForUpdate(orderId).orElse(null);
             if (order != null && order.isActive()) {
-                allTrades.addAll(privateBookMatcher.matchAgainstResidualMarket(order));
+                allTrades.addAll(privateBookMatcher.matchFully(order));
                 closeUnfilledMarketOrder(order);
             }
         }
@@ -79,7 +79,7 @@ public class OrderMatchingService {
                 userId, instrumentCode, ACTIVE_STATUSES)) {
             TradingOrder order = tradingOrderRepository.findByIdForUpdate(orderId).orElse(null);
             if (order != null && order.isActive()) {
-                allTrades.addAll(privateBookMatcher.matchAgainstResidualMarket(order));
+                allTrades.addAll(privateBookMatcher.matchFully(order));
                 closeUnfilledMarketOrder(order);
             }
         }

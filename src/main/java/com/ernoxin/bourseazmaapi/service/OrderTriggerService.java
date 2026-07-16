@@ -48,6 +48,10 @@ public class OrderTriggerService {
                     || order.getRemainingQuantity() == null || order.getRemainingQuantity() <= 0) {
                 continue;
             }
+            if (user.isBlocked() || user.getDeletedAt() != null) {
+                failTriggeredOrder(order, "حساب کاربری برای اجرای سفارش فعال نیست.");
+                continue;
+            }
             if (order.getTriggerComparator() == null || order.getTriggerPrice() == null) {
                 continue;
             }

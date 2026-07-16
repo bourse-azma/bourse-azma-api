@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.service;
 import com.ernoxin.bourseazmaapi.config.TradingRulesProperties;
 import com.ernoxin.bourseazmaapi.dto.CreateTradingOrderRequest;
 import com.ernoxin.bourseazmaapi.dto.WalletAdjustmentRequest;
+import com.ernoxin.bourseazmaapi.exception.AccountBlockedException;
 import com.ernoxin.bourseazmaapi.mapper.UserMapper;
 import com.ernoxin.bourseazmaapi.mapper.WalletMapper;
 import com.ernoxin.bourseazmaapi.model.OrderSide;
@@ -70,6 +71,59 @@ class TradingRulesValidationTest {
         assertThatThrownBy(() -> service.createOrder(1L, request))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("5,000,000");
+    }
+
+    @Test
+    void rejectsOrdersForBlockedOrDeletedAccountsBeforeAnyMarketOrRepositoryMutation() {
+        TradingOrderRepository orderRepository = mock(TradingOrderRepository.class);
+        PortfolioHoldingRepository holdingRepository = mock(PortfolioHoldingRepository.class);
+        UserRepository userRepository = mock(UserRepository.class);
+        OrderMatchingService matchingService = mock(OrderMatchingService.class);
+        MarketLiquidityService liquidityService = mock(MarketLiquidityService.class);
+        MarketStateService marketStateService = mock(MarketStateService.class);
+        TradingAccountResponseMapper responseMapper = mock(TradingAccountResponseMapper.class);
+        PrivateOrderBookService orderBookService = mock(PrivateOrderBookService.class);
+
+        User blocked = new User();
+        blocked.setBlocked(true);
+        blocked.setBalance(new BigDecimal("100000000"));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(blocked));
+
+        TradingAccountServiceImpl service = new TradingAccountServiceImpl(
+                orderRepository,
+                holdingRepository,
+                userRepository,
+                matchingService,
+                liquidityService,
+                marketStateService,
+                responseMapper,
+                orderBookService,
+                RULES
+        );
+
+        CreateTradingOrderRequest request = new CreateTradingOrderRequest();
+        request.setSide(OrderSide.BUY);
+        request.setOrderType(OrderType.NORMAL);
+        request.setPriceType(PriceType.CUSTOM);
+        request.setSymbol("فولاد");
+        request.setInstrumentCode("123");
+        request.setQuantity(10L);
+        request.setPrice(new BigDecimal("1000000"));
+        request.setLivePrice(new BigDecimal("1000000"));
+
+        assertThatThrownBy(() -> service.createOrder(1L, request))
+                .isInstanceOf(AccountBlockedException.class)
+                .hasMessageContaining("مسدود");
+
+        org.mockito.Mockito.verifyNoInteractions(
+                orderRepository,
+                holdingRepository,
+                matchingService,
+                liquidityService,
+                marketStateService,
+                responseMapper,
+                orderBookService
+        );
     }
 
     @Test

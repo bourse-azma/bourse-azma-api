@@ -7,15 +7,33 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long> {
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TradingOrder o SET o.status = com.ernoxin.bourseazmaapi.model.OrderStatus.CANCELLED, " +
+            "o.remainingQuantity = 0, o.cancelledAt = :cancelledAt " +
+            "WHERE o.status IN :statuses AND o.remainingQuantity > 0")
+    int expireAllActiveOrders(@Param("statuses") List<OrderStatus> statuses,
+                              @Param("cancelledAt") Instant cancelledAt);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TradingOrder o SET o.status = com.ernoxin.bourseazmaapi.model.OrderStatus.CANCELLED, " +
+            "o.remainingQuantity = 0, o.cancelledAt = :cancelledAt " +
+            "WHERE o.status IN :statuses AND o.remainingQuantity > 0 AND o.orderTime < :cutoff")
+    int expireActiveOrdersBefore(@Param("statuses") List<OrderStatus> statuses,
+                                 @Param("cutoff") Instant cutoff,
+                                 @Param("cancelledAt") Instant cancelledAt);
+
     Page<TradingOrder> findAllByUserIdOrderByOrderTimeDesc(Long userId, Pageable pageable);
 
     Page<TradingOrder> findAllByUserIdAndStatusInOrderByOrderTimeDesc(
@@ -82,22 +100,6 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
                                                   @Param("minPrice") java.math.BigDecimal minPrice,
                                                   @Param("statuses") List<OrderStatus> statuses,
                                                   @Param("excludeOrderId") Long excludeOrderId);
-
-    @Query("SELECT o FROM TradingOrder o WHERE o.user.id = :userId " +
-            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
-            "AND o.remainingQuantity > 0 AND o.side = com.ernoxin.bourseazmaapi.model.OrderSide.BUY " +
-            "ORDER BY o.orderPrice DESC, o.orderTime ASC")
-    List<TradingOrder> findActiveBuysPriceTime(@Param("userId") Long userId,
-                                               @Param("instrumentCode") String instrumentCode,
-                                               @Param("statuses") List<OrderStatus> statuses);
-
-    @Query("SELECT o FROM TradingOrder o WHERE o.user.id = :userId " +
-            "AND o.instrumentCode = :instrumentCode AND o.status IN :statuses " +
-            "AND o.remainingQuantity > 0 AND o.side = com.ernoxin.bourseazmaapi.model.OrderSide.SELL " +
-            "ORDER BY o.orderPrice ASC, o.orderTime ASC")
-    List<TradingOrder> findActiveSellsPriceTime(@Param("userId") Long userId,
-                                                @Param("instrumentCode") String instrumentCode,
-                                                @Param("statuses") List<OrderStatus> statuses);
 
     long countByUserId(Long userId);
 
