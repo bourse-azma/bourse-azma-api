@@ -7,15 +7,16 @@ import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.service.MarketMakerService;
 import com.ernoxin.bourseazmaapi.service.WalletLedgerService;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 @Component
 @RequiredArgsConstructor
@@ -28,9 +29,12 @@ public class TradeExecutor {
     private final UserRepository userRepository;
     private final MarketMakerService marketMakerService;
     private final WalletLedgerService walletLedgerService;
+    private final EntityManager entityManager;
 
+    @Transactional
     public Trade executeTrade(TradingOrder buyOrder, TradingOrder sellOrder,
                               long quantity, BigDecimal price) {
+        validateExecution(buyOrder, sellOrder, quantity, price);
         BigDecimal tradeValue = price.multiply(BigDecimal.valueOf(quantity));
 
         boolean buyerIsMarketMaker = marketMakerService.isMarketMaker(buyOrder.getUser());
@@ -39,13 +43,40 @@ public class TradeExecutor {
                 && buyOrder.getUser() != null && sellOrder.getUser() != null
                 && Objects.equals(buyOrder.getUser().getId(), sellOrder.getUser().getId());
 
-        if (sameUser) {
-            User user = userRepository.findByIdForUpdate(buyOrder.getUser().getId()).orElse(null);
-            if (user == null) {
-                failBuyOrder(buyOrder, "حساب کاربر یافت نشد.");
-                failSellOrder(sellOrder, "حساب کاربر یافت نشد.");
+        // Every transaction acquires account locks in the same global order. Without
+        // this ordering, simultaneous A->B and B->A trades can deadlock.
+        TreeSet<Long> participantIds = new TreeSet<>();
+        if (!buyerIsMarketMaker && buyOrder.getUser() != null && buyOrder.getUser().getId() != null) {
+            participantIds.add(buyOrder.getUser().getId());
+        }
+        if (!sellerIsMarketMaker && sellOrder.getUser() != null && sellOrder.getUser().getId() != null) {
+            participantIds.add(sellOrder.getUser().getId());
+        }
+        Map<Long, User> lockedUsers = new HashMap<>();
+        for (Long participantId : participantIds) {
+            User locked = userRepository.findByIdForUpdate(participantId).orElse(null);
+            if (locked == null) {
+                boolean missingBuyer = !buyerIsMarketMaker && buyOrder.getUser() != null
+                        && Objects.equals(participantId, buyOrder.getUser().getId());
+                boolean missingSeller = !sellerIsMarketMaker && sellOrder.getUser() != null
+                        && Objects.equals(participantId, sellOrder.getUser().getId());
+                if (missingBuyer) {
+                    failBuyOrder(buyOrder, sameUser ? "حساب کاربر یافت نشد." : "حساب خریدار یافت نشد.");
+                }
+                if (missingSeller) {
+                    failSellOrder(sellOrder, sameUser ? "حساب کاربر یافت نشد." : "حساب فروشنده یافت نشد.");
+                }
                 return null;
             }
+            // Orders may already have placed this User in the persistence context
+            // before the lock was acquired. Refresh after waiting for the lock so
+            // balance calculations never use that stale first-level-cache snapshot.
+            entityManager.refresh(locked);
+            lockedUsers.put(participantId, locked);
+        }
+
+        if (sameUser) {
+            User user = lockedUsers.get(buyOrder.getUser().getId());
             BigDecimal balance = user.getBalance() != null ? user.getBalance() : BigDecimal.ZERO;
             if (balance.compareTo(tradeValue) < 0) {
                 failBuyOrder(buyOrder, "موجودی کافی برای اجرای سفارش خرید وجود ندارد.");
@@ -62,12 +93,7 @@ public class TradeExecutor {
             sellOrder.setUser(user);
         } else {
             if (!buyerIsMarketMaker) {
-                User buyer = userRepository.findByIdForUpdate(buyOrder.getUser().getId())
-                        .orElse(null);
-                if (buyer == null) {
-                    failBuyOrder(buyOrder, "حساب خریدار یافت نشد.");
-                    return null;
-                }
+                User buyer = lockedUsers.get(buyOrder.getUser().getId());
                 BigDecimal buyerBalance = buyer.getBalance() != null ? buyer.getBalance() : BigDecimal.ZERO;
                 if (buyerBalance.compareTo(tradeValue) < 0) {
                     failBuyOrder(buyOrder, "موجودی کافی برای اجرای سفارش خرید وجود ندارد.");
@@ -77,14 +103,9 @@ public class TradeExecutor {
             }
 
             if (!sellerIsMarketMaker) {
-                User seller = userRepository.findByIdForUpdate(sellOrder.getUser().getId())
-                        .orElse(null);
-                if (seller == null) {
-                    failSellOrder(sellOrder, "حساب فروشنده یافت نشد.");
-                    return null;
-                }
+                User seller = lockedUsers.get(sellOrder.getUser().getId());
                 long available = portfolioHoldingRepository.findAllByUserIdAndInstrumentCodeForUpdate(
-                        sellOrder.getUser().getId(),
+                        seller.getId(),
                         sellOrder.getInstrumentCode()
                 ).stream().mapToLong(PortfolioHolding::getQuantity).sum();
                 if (available < quantity) {
@@ -194,16 +215,26 @@ public class TradeExecutor {
 
         if (!existing.isEmpty()) {
             PortfolioHolding holding = existing.get(0);
-            long oldQty = holding.getQuantity();
-            BigDecimal oldCost = holding.getBuyPrice().multiply(BigDecimal.valueOf(oldQty));
+            long oldQty = 0L;
+            BigDecimal oldCost = BigDecimal.ZERO;
+            for (PortfolioHolding current : existing) {
+                oldQty = Math.addExact(oldQty, current.getQuantity());
+                oldCost = oldCost.add(current.getBuyPrice()
+                        .multiply(BigDecimal.valueOf(current.getQuantity())));
+            }
             BigDecimal newCost = price.multiply(BigDecimal.valueOf(quantity));
-            long newQty = oldQty + quantity;
+            long newQty = Math.addExact(oldQty, quantity);
             BigDecimal avgPrice = oldCost.add(newCost)
                     .divide(BigDecimal.valueOf(newQty), 2, RoundingMode.HALF_UP);
+            holding.setSymbol(symbol);
             holding.setQuantity(newQty);
             holding.setBuyPrice(avgPrice);
             holding.setLivePrice(price);
             portfolioHoldingRepository.save(holding);
+            if (existing.size() > 1) {
+                // Repair legacy duplicates while preserving their complete cost basis.
+                portfolioHoldingRepository.deleteAll(existing.subList(1, existing.size()));
+            }
         } else {
             var user = userRepository.getReferenceById(userId);
             PortfolioHolding holding = new PortfolioHolding();
@@ -256,6 +287,33 @@ public class TradeExecutor {
         order.setRemainingQuantity(order.getRemainingQuantity() - fillQuantity);
         order.setAverageExecutedPrice(totalValue.divide(
                 BigDecimal.valueOf(newExecutedQuantity), 2, RoundingMode.HALF_UP));
+    }
+
+    private void validateExecution(TradingOrder buyOrder, TradingOrder sellOrder,
+                                   long quantity, BigDecimal price) {
+        if (buyOrder == null || sellOrder == null) {
+            throw new IllegalArgumentException("هر دو سفارش خرید و فروش برای اجرای معامله الزامی هستند.");
+        }
+        if (buyOrder.getUser() == null || buyOrder.getUser().getId() == null
+                || sellOrder.getUser() == null || sellOrder.getUser().getId() == null) {
+            throw new IllegalArgumentException("هر دو سفارش باید به یک حساب معتبر متصل باشند.");
+        }
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("تعداد معامله باید بیشتر از صفر باشد.");
+        }
+        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("قیمت معامله باید بیشتر از صفر باشد.");
+        }
+        if (buyOrder.getSide() != OrderSide.BUY || sellOrder.getSide() != OrderSide.SELL) {
+            throw new IllegalArgumentException("جهت سفارش‌های معامله نامعتبر است.");
+        }
+        if (!Objects.equals(buyOrder.getInstrumentCode(), sellOrder.getInstrumentCode())) {
+            throw new IllegalArgumentException("کد ابزار سفارش خرید و فروش باید یکسان باشد.");
+        }
+        if (buyOrder.getRemainingQuantity() == null || sellOrder.getRemainingQuantity() == null
+                || quantity > buyOrder.getRemainingQuantity() || quantity > sellOrder.getRemainingQuantity()) {
+            throw new IllegalArgumentException("تعداد معامله از مانده یکی از سفارش‌ها بیشتر است.");
+        }
     }
 
     private void updateOrderStatus(TradingOrder order) {

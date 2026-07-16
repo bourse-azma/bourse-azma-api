@@ -176,6 +176,6 @@ public class AdminDashboardService {
     }
 
     private AdminActivityResponse activity(UserActivityLog log) {
-        return new AdminActivityResponse(log.getId(), log.getActivityType(), log.getOccurredAt());
+        return new AdminActivityResponse(log.getId(), log.getActivityType(), log.getIpAddress(), log.getOccurredAt());
     }
 }

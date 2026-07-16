@@ -23,4 +23,7 @@ public class UserActivityLog extends BaseEntity<Long> {
 
     @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt;
+
+    @Column(name = "ip_address", length = 45)
+    private String ipAddress;
 }

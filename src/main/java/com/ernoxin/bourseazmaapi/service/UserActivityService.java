@@ -23,13 +23,14 @@ public class UserActivityService {
     }
 
     @Transactional
-    public void record(Long userId, String type) {
+    public void record(Long userId, String type, String ipAddress) {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return;
         UserActivityLog log = new UserActivityLog();
         log.setUser(user);
         log.setActivityType(type);
         log.setOccurredAt(Instant.now());
+        log.setIpAddress(ipAddress);
         activityLogRepository.save(log);
     }
 }

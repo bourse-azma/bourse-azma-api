@@ -7,8 +7,10 @@ import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.service.MarketMakerService;
 import com.ernoxin.bourseazmaapi.service.WalletLedgerService;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -28,6 +31,7 @@ class TradeExecutorComplexScenarioTest {
     private UserRepository userRepository;
     private MarketMakerService marketMakerService;
     private WalletLedgerService walletLedgerService;
+    private EntityManager entityManager;
     private TradeExecutor executor;
 
     @BeforeEach
@@ -38,13 +42,15 @@ class TradeExecutorComplexScenarioTest {
         userRepository = mock(UserRepository.class);
         marketMakerService = mock(MarketMakerService.class);
         walletLedgerService = mock(WalletLedgerService.class);
+        entityManager = mock(EntityManager.class);
         executor = new TradeExecutor(
                 orderRepository,
                 tradeRepository,
                 holdingRepository,
                 userRepository,
                 marketMakerService,
-                walletLedgerService
+                walletLedgerService,
+                entityManager
         );
         when(tradeRepository.save(any(Trade.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0, Trade.class));
@@ -95,6 +101,7 @@ class TradeExecutorComplexScenarioTest {
         TradingOrder buy = order(10L, buyer, OrderSide.BUY, 100L);
         TradingOrder sell = order(11L, seller, OrderSide.SELL, 100L);
         when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(buyer));
+        when(userRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(seller));
 
         Trade trade = executor.executeTrade(buy, sell, 100L, BigDecimal.ONE);
 
@@ -118,8 +125,7 @@ class TradeExecutorComplexScenarioTest {
 
         when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(user));
         when(holdingRepository.findAllByUserIdAndInstrumentCodeForUpdate(1L, "IRO1TEST0001"))
-                .thenReturn(List.of(existing), List.of(existing), List.of());
-        when(userRepository.getReferenceById(1L)).thenReturn(user);
+                .thenReturn(List.of(existing), List.of(existing), List.of(existing));
         doAnswer(invocation -> {
             User ledgerUser = invocation.getArgument(0);
             balancesAtLedgerWrite.add(ledgerUser.getBalance());
@@ -133,8 +139,78 @@ class TradeExecutorComplexScenarioTest {
                 new BigDecimal("960.00"),
                 new BigDecimal("1000.00")
         );
-        assertThat(existing.getQuantity()).isEqualTo(80L);
-        verify(holdingRepository).save(argThat(created -> created.getQuantity() == 20L));
+        assertThat(existing.getQuantity()).isEqualTo(100L);
+        assertThat(existing.getBuyPrice()).isEqualByComparingTo("1.20");
+        verify(holdingRepository, atLeastOnce()).save(existing);
+        verify(holdingRepository, never()).delete(any());
+    }
+
+    @Test
+    void accountLocksAlwaysFollowAscendingUserIdInsteadOfBuySellRole() {
+        User buyer = user(9L, "1000");
+        User seller = user(2L, "0");
+        PortfolioHolding sellerHolding = holding(seller, 10L, "1.00");
+        TradingOrder buy = order(10L, buyer, OrderSide.BUY, 10L);
+        TradingOrder sell = order(11L, seller, OrderSide.SELL, 10L);
+
+        when(userRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(seller));
+        when(userRepository.findByIdForUpdate(9L)).thenReturn(Optional.of(buyer));
+        when(holdingRepository.findAllByUserIdAndInstrumentCodeForUpdate(2L, "IRO1TEST0001"))
+                .thenReturn(List.of(sellerHolding));
+        when(holdingRepository.findAllByUserIdAndInstrumentCodeForUpdate(9L, "IRO1TEST0001"))
+                .thenReturn(List.of());
+        when(userRepository.getReferenceById(9L)).thenReturn(buyer);
+
+        executor.executeTrade(buy, sell, 10L, BigDecimal.ONE);
+
+        InOrder lockOrder = inOrder(userRepository);
+        lockOrder.verify(userRepository).findByIdForUpdate(2L);
+        lockOrder.verify(userRepository).findByIdForUpdate(9L);
+    }
+
+    @Test
+    void legacyDuplicateHoldingsAreMergedWithTheirFullWeightedCostBasis() {
+        User buyer = user(1L, "5000");
+        User marketMaker = user(99L, "0");
+        PortfolioHolding first = holding(buyer, 10L, "10.00");
+        PortfolioHolding duplicate = holding(buyer, 30L, "20.00");
+        TradingOrder buy = order(10L, buyer, OrderSide.BUY, 20L);
+        TradingOrder sell = order(11L, marketMaker, OrderSide.SELL, 20L);
+
+        when(marketMakerService.isMarketMaker(marketMaker)).thenReturn(true);
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(buyer));
+        when(holdingRepository.findAllByUserIdAndInstrumentCodeForUpdate(1L, "IRO1TEST0001"))
+                .thenReturn(List.of(first, duplicate));
+
+        executor.executeTrade(buy, sell, 20L, new BigDecimal("40.00"));
+
+        assertThat(first.getQuantity()).isEqualTo(60L);
+        assertThat(first.getBuyPrice()).isEqualByComparingTo("25.00");
+        assertThat(first.getLivePrice()).isEqualByComparingTo("40.00");
+        verify(holdingRepository).deleteAll(List.of(duplicate));
+        verify(userRepository, never()).getReferenceById(anyLong());
+    }
+
+    @Test
+    void invalidExecutionIsRejectedBeforeAnyDatabaseMutation() {
+        User buyer = user(1L, "1000");
+        User seller = user(2L, "0");
+        TradingOrder buy = order(10L, buyer, OrderSide.BUY, 10L);
+        TradingOrder sell = order(11L, seller, OrderSide.SELL, 10L);
+
+        assertThatThrownBy(() -> executor.executeTrade(buy, sell, 0L, BigDecimal.ONE))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("تعداد");
+        assertThatThrownBy(() -> executor.executeTrade(buy, sell, 1L, BigDecimal.ZERO))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("قیمت");
+        sell.setInstrumentCode("OTHER");
+        assertThatThrownBy(() -> executor.executeTrade(buy, sell, 1L, BigDecimal.ONE))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("کد ابزار");
+
+        verifyNoInteractions(userRepository, holdingRepository, orderRepository, tradeRepository,
+                walletLedgerService, entityManager);
     }
 
     private User user(Long id, String balance) {

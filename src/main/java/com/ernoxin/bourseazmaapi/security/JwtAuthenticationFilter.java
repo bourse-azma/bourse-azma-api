@@ -1,6 +1,7 @@
 package com.ernoxin.bourseazmaapi.security;
 
 import com.ernoxin.bourseazmaapi.service.UserActivityService;
+import com.ernoxin.bourseazmaapi.util.ClientIpResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,6 +24,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final RevokedTokenService revokedTokenService;
     private final AuthCookieService authCookieService;
     private final UserActivityService userActivityService;
+    private final ClientIpResolver clientIpResolver;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -65,7 +67,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if ("POST".equalsIgnoreCase(request.getMethod())
                         && "/api/v1/auth/logout".equals(request.getRequestURI())
                         && response.getStatus() >= 200 && response.getStatus() < 300) {
-                    userActivityService.record(authenticatedUserId, "LOGOUT");
+                    userActivityService.record(authenticatedUserId, "LOGOUT", clientIpResolver.resolve(request));
                 }
             } catch (RuntimeException ignored) {
                 // Activity tracking must never break the user's main request.

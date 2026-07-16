@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.config;
 import com.ernoxin.bourseazmaapi.filter.ReferenceIdFilter;
 import com.ernoxin.bourseazmaapi.security.*;
 import com.ernoxin.bourseazmaapi.service.UserActivityService;
+import com.ernoxin.bourseazmaapi.util.ClientIpResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -59,13 +60,15 @@ public class SecurityConfig {
                                                            AppUserDetailsService appUserDetailsService,
                                                            RevokedTokenService revokedTokenService,
                                                            AuthCookieService authCookieService,
-                                                           UserActivityService userActivityService) {
+                                                           UserActivityService userActivityService,
+                                                           ClientIpResolver clientIpResolver) {
         return new JwtAuthenticationFilter(
                 jwtTokenService,
                 appUserDetailsService,
                 revokedTokenService,
                 authCookieService,
-                userActivityService
+                userActivityService,
+                clientIpResolver
         );
     }
 }

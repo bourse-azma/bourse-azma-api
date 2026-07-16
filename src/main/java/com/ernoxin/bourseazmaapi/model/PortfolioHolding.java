@@ -10,7 +10,9 @@ import java.time.Instant;
 @Getter
 @Setter
 @Entity
-@Table(name = "portfolio_holdings")
+@Table(name = "portfolio_holdings", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_portfolio_user_instrument", columnNames = {"user_id", "instrument_code"})
+})
 public class PortfolioHolding extends BaseEntity<Long> {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

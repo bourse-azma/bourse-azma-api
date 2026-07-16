@@ -71,7 +71,7 @@ public class AuthServiceImpl implements AuthService {
         user.setLastSeenAt(now);
         user.setLastLoginIp(clientIp);
         userRepository.save(user);
-        userActivityService.record(user.getId(), "LOGIN");
+        userActivityService.record(user.getId(), "LOGIN", clientIp);
 
         AppUserPrincipal principal = AppUserPrincipal.from(user);
         String accessToken = jwtTokenService.generateAccessToken(principal);
