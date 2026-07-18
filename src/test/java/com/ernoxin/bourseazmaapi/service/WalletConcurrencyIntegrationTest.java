@@ -1,8 +1,11 @@
 package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.dto.WalletAdjustmentRequest;
+import com.ernoxin.bourseazmaapi.dto.WalletTransactionResponse;
+import com.ernoxin.bourseazmaapi.dto.api.PagedResponse;
 import com.ernoxin.bourseazmaapi.mapper.UserMapper;
 import com.ernoxin.bourseazmaapi.mapper.WalletMapper;
+import com.ernoxin.bourseazmaapi.mapper.WalletMapperImpl;
 import com.ernoxin.bourseazmaapi.model.*;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
@@ -33,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "app.trading.minimum-order-value=1",
         "app.trading.maximum-wallet-adjustment=1000000"
 })
-@Import(WalletServiceImpl.class)
+@Import({WalletServiceImpl.class, WalletMapperImpl.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class WalletConcurrencyIntegrationTest {
 
@@ -52,7 +55,7 @@ class WalletConcurrencyIntegrationTest {
     @MockitoBean
     private UserMapper userMapper;
 
-    @MockitoBean
+    @Autowired
     private WalletMapper walletMapper;
 
     private ExecutorService executor;
@@ -134,6 +137,33 @@ class WalletConcurrencyIntegrationTest {
         assertThat(userRepository.findById(user.getId()).orElseThrow().getBalance())
                 .isEqualByComparingTo("100.00");
         assertThat(transactionRepository.count()).isZero();
+    }
+
+    @Test
+    void transactionHistoryFetchesTheAdminRelationBeforeMappingItsName() {
+        User user = saveUser("wallet-history-user", BigDecimal.ZERO);
+        User admin = saveUser("wallet-history-admin", BigDecimal.ZERO);
+        admin.setFirstName("Admin");
+        admin.setLastName("Operator");
+        admin.setRole(UserRole.ADMIN);
+        admin = userRepository.saveAndFlush(admin);
+
+        WalletTransaction transaction = new WalletTransaction();
+        transaction.setUser(user);
+        transaction.setAmount(BigDecimal.TEN);
+        transaction.setBalanceAfter(BigDecimal.TEN);
+        transaction.setDescription("افزایش موجودی");
+        transaction.setPerformedByAdmin(admin);
+        transaction.setCreatedAt(Instant.now());
+        transactionRepository.saveAndFlush(transaction);
+        Long adminId = admin.getId();
+
+        PagedResponse<WalletTransactionResponse> history = walletService.getTransactions(user.getId(), 0, 20);
+
+        assertThat(history.items()).singleElement().satisfies(item -> {
+            assertThat(item.getPerformedByAdminId()).isEqualTo(adminId);
+            assertThat(item.getPerformedByAdminName()).isEqualTo("Admin Operator");
+        });
     }
 
     private List<Throwable> runConcurrently(int taskCount, ThrowingAction action) throws Exception {

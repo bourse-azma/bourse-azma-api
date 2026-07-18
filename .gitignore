@@ -32,3 +32,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# macOS metadata (especially on external volumes)
+.DS_Store
+._*

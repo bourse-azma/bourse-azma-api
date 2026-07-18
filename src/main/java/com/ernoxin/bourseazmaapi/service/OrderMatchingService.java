@@ -25,6 +25,7 @@ public class OrderMatchingService {
     private final TradingOrderRepository tradingOrderRepository;
     private final UserRepository userRepository;
     private final PrivateBookMatcher privateBookMatcher;
+    private final OrderUpdateNotifier orderUpdateNotifier;
 
     /**
      * Match the given incoming order inside the user's private book:
@@ -108,5 +109,6 @@ public class OrderMatchingService {
                 ? OrderStatus.PARTIALLY_FILLED
                 : OrderStatus.FAILED);
         tradingOrderRepository.save(order);
+        orderUpdateNotifier.publish(order);
     }
 }

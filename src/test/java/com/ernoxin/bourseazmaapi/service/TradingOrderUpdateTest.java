@@ -52,7 +52,8 @@ class TradingOrderUpdateTest {
                 marketStateService,
                 responseMapper,
                 orderBookService,
-                rules
+                rules,
+                mock(OrderUpdateNotifier.class)
         );
 
         user = new User();

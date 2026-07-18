@@ -15,7 +15,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         TsetmcApiProperties.class,
         OrderMatchingProperties.class,
         TradingRulesProperties.class,
-        CorsProperties.class
+        CorsProperties.class,
+        WebSocketProperties.class
 })
 @PropertySource(value = "file://${CONFIG}/properties/bourse-azma-api.properties", ignoreResourceNotFound = true)
 public class Application {

@@ -125,7 +125,7 @@ public class AdminDashboardService {
         tx.setBalanceAfter(newBalance);
         tx.setDescription("ویرایش موجودی توسط مدیر از " + previousBalance.toPlainString()
                 + " به " + newBalance.toPlainString() + " ریال");
-        tx.setSource("ADMIN");
+        tx.setSource(WalletTransactionSource.ADMIN_ADJUSTMENT.name());
         tx.setPerformedByAdmin(admin);
         tx.setAdminNote(request.note() == null || request.note().isBlank() ? null : request.note().trim());
         tx.setCreatedAt(Instant.now());

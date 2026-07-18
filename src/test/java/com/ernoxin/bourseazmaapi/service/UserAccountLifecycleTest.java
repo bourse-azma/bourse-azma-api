@@ -41,7 +41,8 @@ class UserAccountLifecycleTest {
                 mock(WalletTransactionRepository.class),
                 orderRepository,
                 mock(UserMapper.class),
-                mock(PasswordEncoder.class)
+                mock(PasswordEncoder.class),
+                mock(OrderUpdateNotifier.class)
         );
         authenticateAdmin(1L);
     }

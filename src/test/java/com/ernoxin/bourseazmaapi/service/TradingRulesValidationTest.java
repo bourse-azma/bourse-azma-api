@@ -55,7 +55,8 @@ class TradingRulesValidationTest {
                 marketStateService,
                 responseMapper,
                 orderBookService,
-                RULES
+                RULES,
+                mock(OrderUpdateNotifier.class)
         );
 
         CreateTradingOrderRequest request = new CreateTradingOrderRequest();
@@ -98,7 +99,8 @@ class TradingRulesValidationTest {
                 marketStateService,
                 responseMapper,
                 orderBookService,
-                RULES
+                RULES,
+                mock(OrderUpdateNotifier.class)
         );
 
         CreateTradingOrderRequest request = new CreateTradingOrderRequest();

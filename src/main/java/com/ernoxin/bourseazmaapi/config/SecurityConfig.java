@@ -24,6 +24,7 @@ public class SecurityConfig {
 
     private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
     private final RestAccessDeniedHandler restAccessDeniedHandler;
+    private final WebSocketProperties webSocketProperties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
@@ -40,7 +41,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/v1/auth/register",
-                                "/api/v1/auth/login"
+                                "/api/v1/auth/login",
+                                webSocketProperties.getEndpoint(),
+                                webSocketProperties.getEndpoint() + "/**"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

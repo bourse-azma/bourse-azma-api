@@ -36,7 +36,8 @@ class OrderTriggerServiceTest {
                 liquidityService,
                 matchingService,
                 userRepository,
-                holdingRepository
+                holdingRepository,
+                mock(OrderUpdateNotifier.class)
         );
     }
 

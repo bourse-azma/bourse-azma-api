@@ -37,6 +37,18 @@ public class TsetmcMarketClient {
     }
 
     public Optional<JsonNode> getBestLimits(String instrumentCode) {
+        return getInstrumentResource(instrumentCode, "best-limits");
+    }
+
+    public Optional<JsonNode> getClosingPrice(String instrumentCode) {
+        return getInstrumentResource(instrumentCode, "closing-price");
+    }
+
+    public Optional<JsonNode> getClientType(String instrumentCode) {
+        return getInstrumentResource(instrumentCode, "client-type/0/0");
+    }
+
+    private Optional<JsonNode> getInstrumentResource(String instrumentCode, String resourcePath) {
         String normalizedCode = instrumentCode == null ? "" : instrumentCode.trim();
         if (normalizedCode.isEmpty()) {
             return Optional.empty();
@@ -45,7 +57,8 @@ public class TsetmcMarketClient {
         String url = properties.baseUrl()
                 + "/api/v1/instruments/"
                 + normalizedCode
-                + "/best-limits";
+                + "/"
+                + resourcePath;
 
         try {
             JsonNode root = tsetmcRestTemplate.getForObject(url, JsonNode.class);
@@ -58,7 +71,7 @@ public class TsetmcMarketClient {
             }
             return Optional.of(result);
         } catch (RestClientException ex) {
-            log.warn("Failed to fetch TSETMC best limits for {}: {}", normalizedCode, ex.getMessage());
+            log.warn("Failed to fetch TSETMC {} for {}: {}", resourcePath, normalizedCode, ex.getMessage());
             return Optional.empty();
         }
     }

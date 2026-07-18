@@ -6,6 +6,7 @@ import com.ernoxin.bourseazmaapi.repository.TradeRepository;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.service.MarketMakerService;
+import com.ernoxin.bourseazmaapi.service.OrderUpdateNotifier;
 import com.ernoxin.bourseazmaapi.service.WalletLedgerService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class TradeExecutor {
     private final MarketMakerService marketMakerService;
     private final WalletLedgerService walletLedgerService;
     private final EntityManager entityManager;
+    private final OrderUpdateNotifier orderUpdateNotifier;
 
     @Transactional
     public Trade executeTrade(TradingOrder buyOrder, TradingOrder sellOrder,
@@ -123,6 +125,8 @@ public class TradeExecutor {
         applyFill(sellOrder, quantity, price);
         updateOrderStatus(sellOrder);
         tradingOrderRepository.save(sellOrder);
+        orderUpdateNotifier.publish(buyOrder);
+        orderUpdateNotifier.publish(sellOrder);
 
         if (sameUser) {
             // Wash trade: cash and inventory net to zero; ledger still records both legs.
@@ -133,7 +137,8 @@ public class TradeExecutor {
                     user,
                     tradeValue.negate(),
                     String.format("خرید %s به تعداد %d با قیمت %s ریال (معامله داخلی صف)",
-                            buyOrder.getSymbol(), quantity, price.toPlainString())
+                            buyOrder.getSymbol(), quantity, price.toPlainString()),
+                    WalletTransactionSource.TRADE_BUY
             );
             user.setBalance(originalBalance);
             userRepository.save(user);
@@ -141,7 +146,8 @@ public class TradeExecutor {
                     user,
                     tradeValue,
                     String.format("فروش %s به تعداد %d با قیمت %s ریال (معامله داخلی صف)",
-                            sellOrder.getSymbol(), quantity, price.toPlainString())
+                            sellOrder.getSymbol(), quantity, price.toPlainString()),
+                    WalletTransactionSource.TRADE_SELL
             );
             // A wash trade does not change inventory or its cost basis. Applying the
             // sell and buy legs separately would re-price the returned shares at the
@@ -158,7 +164,8 @@ public class TradeExecutor {
                 walletLedgerService.recordBalanceChange(
                         buyer,
                         tradeValue.negate(),
-                        String.format("خرید %s به تعداد %d با قیمت %s ریال", buyOrder.getSymbol(), quantity, price.toPlainString())
+                        String.format("خرید %s به تعداد %d با قیمت %s ریال", buyOrder.getSymbol(), quantity, price.toPlainString()),
+                        WalletTransactionSource.TRADE_BUY
                 );
             }
 
@@ -172,7 +179,8 @@ public class TradeExecutor {
                 walletLedgerService.recordBalanceChange(
                         seller,
                         tradeValue,
-                        String.format("فروش %s به تعداد %d با قیمت %s ریال", sellOrder.getSymbol(), quantity, price.toPlainString())
+                        String.format("فروش %s به تعداد %d با قیمت %s ریال", sellOrder.getSymbol(), quantity, price.toPlainString()),
+                        WalletTransactionSource.TRADE_SELL
                 );
             }
         }
@@ -197,6 +205,7 @@ public class TradeExecutor {
         buyOrder.setRemainingQuantity(0L);
         buyOrder.setCancelledAt(Instant.now());
         tradingOrderRepository.save(buyOrder);
+        orderUpdateNotifier.publish(buyOrder);
         log.warn("Buy order {} failed during matching: {}", buyOrder.getId(), reason);
     }
 
@@ -205,6 +214,7 @@ public class TradeExecutor {
         sellOrder.setRemainingQuantity(0L);
         sellOrder.setCancelledAt(Instant.now());
         tradingOrderRepository.save(sellOrder);
+        orderUpdateNotifier.publish(sellOrder);
         log.warn("Sell order {} failed during matching: {}", sellOrder.getId(), reason);
     }
 

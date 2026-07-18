@@ -35,6 +35,9 @@ import static org.mockito.Mockito.when;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class UserProfileConcurrencyIntegrationTest {
 
+    @MockitoBean
+    private OrderUpdateNotifier orderUpdateNotifier;
+
     @Autowired
     private UserService userService;
 

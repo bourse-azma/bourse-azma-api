@@ -60,6 +60,9 @@ class TradingConcurrencyIntegrationTest {
     @MockitoBean
     private PrivateOrderBookService privateOrderBookService;
 
+    @MockitoBean
+    private OrderUpdateNotifier orderUpdateNotifier;
+
     private ExecutorService executor;
 
     @AfterEach

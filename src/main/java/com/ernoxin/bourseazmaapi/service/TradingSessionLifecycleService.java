@@ -1,6 +1,7 @@
 package com.ernoxin.bourseazmaapi.service;
 
 import com.ernoxin.bourseazmaapi.model.OrderStatus;
+import com.ernoxin.bourseazmaapi.model.TradingOrder;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserLiquidityConsumptionRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class TradingSessionLifecycleService {
 
     private final TradingOrderRepository tradingOrderRepository;
     private final UserLiquidityConsumptionRepository consumptionRepository;
+    private final OrderUpdateNotifier orderUpdateNotifier;
 
     /**
      * End the simulated trading day atomically: daily orders expire and every user's
@@ -30,7 +32,11 @@ public class TradingSessionLifecycleService {
     @Transactional
     public SessionResetResult closeCurrentSession() {
         Instant now = Instant.now();
+        List<TradingOrder> expiringOrders =
+                tradingOrderRepository.findAllByStatusInAndRemainingQuantityGreaterThan(
+                        DAILY_ACTIVE_STATUSES, 0L);
         int expiredOrders = tradingOrderRepository.expireAllActiveOrders(DAILY_ACTIVE_STATUSES, now);
+        publishExpiredOrders(expiringOrders, now);
         int clearedLevels = consumptionRepository.deleteAllForSessionReset();
         return new SessionResetResult(expiredOrders, clearedLevels);
     }
@@ -40,8 +46,26 @@ public class TradingSessionLifecycleService {
      */
     @Transactional
     public int expireOrdersBefore(Instant cutoff) {
-        return tradingOrderRepository.expireActiveOrdersBefore(
-                DAILY_ACTIVE_STATUSES, cutoff, Instant.now());
+        Instant now = Instant.now();
+        List<TradingOrder> expiringOrders =
+                tradingOrderRepository.findAllByStatusInAndRemainingQuantityGreaterThanAndOrderTimeBefore(
+                        DAILY_ACTIVE_STATUSES, 0L, cutoff);
+        int expiredOrders = tradingOrderRepository.expireActiveOrdersBefore(
+                DAILY_ACTIVE_STATUSES, cutoff, now);
+        publishExpiredOrders(expiringOrders, now);
+        return expiredOrders;
+    }
+
+    private void publishExpiredOrders(List<TradingOrder> orders, Instant cancelledAt) {
+        if (orders == null) {
+            return;
+        }
+        for (TradingOrder order : orders) {
+            order.setStatus(OrderStatus.CANCELLED);
+            order.setRemainingQuantity(0L);
+            order.setCancelledAt(cancelledAt);
+            orderUpdateNotifier.publish(order);
+        }
     }
 
     public record SessionResetResult(int expiredOrders, int clearedLiquidityLevels) {

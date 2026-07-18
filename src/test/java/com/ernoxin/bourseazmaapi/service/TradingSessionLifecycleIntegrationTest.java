@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -17,6 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DataJpaTest(showSql = false, properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 @Import(TradingSessionLifecycleService.class)
 class TradingSessionLifecycleIntegrationTest {
+
+    @MockitoBean
+    private OrderUpdateNotifier orderUpdateNotifier;
 
     @Autowired
     private TradingSessionLifecycleService lifecycleService;

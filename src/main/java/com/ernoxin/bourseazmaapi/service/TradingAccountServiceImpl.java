@@ -36,6 +36,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
     private final TradingAccountResponseMapper responseMapper;
     private final PrivateOrderBookService privateOrderBookService;
     private final TradingRulesProperties tradingRules;
+    private final OrderUpdateNotifier orderUpdateNotifier;
 
     @Value("${app.ui-debug-mode:false}")
     private boolean uiDebugMode;
@@ -157,6 +158,8 @@ public class TradingAccountServiceImpl implements TradingAccountService {
                 .map(t -> new TradeResponse(t.getId(), t.getQuantity(), t.getPrice(), t.getValue(), t.getExecutedAt()))
                 .toList();
 
+        orderUpdateNotifier.publish(saved);
+
         return new CreateOrderResult(responseMapper.toOrderResponse(saved), tradeResponses);
     }
 
@@ -223,6 +226,7 @@ public class TradingAccountServiceImpl implements TradingAccountService {
         List<TradeResponse> tradeResponses = trades.stream()
                 .map(t -> new TradeResponse(t.getId(), t.getQuantity(), t.getPrice(), t.getValue(), t.getExecutedAt()))
                 .toList();
+        orderUpdateNotifier.publish(saved);
         return new UpdateOrderResult(responseMapper.toOrderResponse(saved), tradeResponses);
     }
 
@@ -253,6 +257,8 @@ public class TradingAccountServiceImpl implements TradingAccountService {
 
         // Freeing reserved shares/cash can allow remaining private-book orders to match.
         orderMatchingService.runMatchingForUserInstrument(userId, instrumentCode);
+
+        orderUpdateNotifier.publish(order);
 
         return new CancelOrderResult(responseMapper.toOrderResponse(order));
     }

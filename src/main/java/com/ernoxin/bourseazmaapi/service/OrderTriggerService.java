@@ -26,6 +26,7 @@ public class OrderTriggerService {
     private final OrderMatchingService orderMatchingService;
     private final UserRepository userRepository;
     private final PortfolioHoldingRepository portfolioHoldingRepository;
+    private final OrderUpdateNotifier orderUpdateNotifier;
 
     @Transactional
     public int evaluatePendingTriggers() {
@@ -86,6 +87,7 @@ public class OrderTriggerService {
             order.setStatus(OrderStatus.REQUESTED);
             tradingOrderRepository.save(order);
             orderMatchingService.matchOrder(order);
+            orderUpdateNotifier.publish(order);
             triggeredCount++;
         }
 
@@ -124,6 +126,7 @@ public class OrderTriggerService {
         order.setRemainingQuantity(0L);
         order.setCancelledAt(Instant.now());
         tradingOrderRepository.save(order);
+        orderUpdateNotifier.publish(order);
         log.warn("Conditional order {} failed on trigger: {}", order.getId(), reason);
     }
 

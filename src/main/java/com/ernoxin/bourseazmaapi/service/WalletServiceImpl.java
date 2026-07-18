@@ -11,6 +11,7 @@ import com.ernoxin.bourseazmaapi.mapper.UserMapper;
 import com.ernoxin.bourseazmaapi.mapper.WalletMapper;
 import com.ernoxin.bourseazmaapi.model.User;
 import com.ernoxin.bourseazmaapi.model.WalletTransaction;
+import com.ernoxin.bourseazmaapi.model.WalletTransactionSource;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.repository.WalletTransactionRepository;
@@ -52,6 +53,7 @@ public class WalletServiceImpl implements WalletService {
         BigDecimal newBalance;
         BigDecimal amount;
         String autoDescription;
+        WalletTransactionSource source;
 
         String type = request.getType().toUpperCase();
         BigDecimal value = request.getValue();
@@ -68,6 +70,7 @@ public class WalletServiceImpl implements WalletService {
                 amount = value;
                 newBalance = oldBalance.add(amount);
                 autoDescription = String.format("افزایش موجودی به میزان %s ریال", formatAmount(amount));
+                source = WalletTransactionSource.DEPOSIT;
                 break;
             case "SUBTRACT":
                 BigDecimal reservedBuyValue = tradingOrderRepository.sumReservedBuyValue(userId);
@@ -78,6 +81,7 @@ public class WalletServiceImpl implements WalletService {
                 amount = value.negate();
                 newBalance = oldBalance.add(amount);
                 autoDescription = String.format("کاهش موجودی به میزان %s ریال", formatAmount(value));
+                source = WalletTransactionSource.WITHDRAWAL;
                 break;
             default:
                 throw new IllegalArgumentException("نوع عملیات نامعتبر است: " + type);
@@ -95,6 +99,7 @@ public class WalletServiceImpl implements WalletService {
         tx.setAmount(amount);
         tx.setBalanceAfter(newBalance);
         tx.setDescription(request.getDescription() != null && !request.getDescription().isBlank() ? request.getDescription() : autoDescription);
+        tx.setSource(source.name());
         tx.setCreatedAt(Instant.now());
         walletTransactionRepository.save(tx);
 
@@ -102,6 +107,7 @@ public class WalletServiceImpl implements WalletService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PagedResponse<WalletTransactionResponse> getTransactions(Long userId, int page, int size) {
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("کاربر مورد نظر یافت نشد.");

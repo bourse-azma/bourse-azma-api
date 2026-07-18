@@ -40,6 +40,7 @@ public class UserServiceImpl implements UserService {
     private final TradingOrderRepository tradingOrderRepository;
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final OrderUpdateNotifier orderUpdateNotifier;
 
     @Override
     @Transactional
@@ -83,6 +84,7 @@ public class UserServiceImpl implements UserService {
             initialTx.setDescription("ثبت‌نام بدون موجودی اولیه");
         }
         initialTx.setCreatedAt(Instant.now());
+        initialTx.setSource(WalletTransactionSource.INITIAL_BALANCE.name());
         walletTransactionRepository.save(initialTx);
 
         return userMapper.toDto(savedUser);
@@ -191,6 +193,7 @@ public class UserServiceImpl implements UserService {
             order.setRemainingQuantity(0L);
         }
         tradingOrderRepository.saveAll(activeOrders);
+        activeOrders.forEach(orderUpdateNotifier::publish);
     }
 
     @Override

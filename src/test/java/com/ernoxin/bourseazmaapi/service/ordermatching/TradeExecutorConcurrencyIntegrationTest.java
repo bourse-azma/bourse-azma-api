@@ -6,6 +6,7 @@ import com.ernoxin.bourseazmaapi.repository.TradeRepository;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.service.MarketMakerService;
+import com.ernoxin.bourseazmaapi.service.OrderUpdateNotifier;
 import com.ernoxin.bourseazmaapi.service.WalletLedgerService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.RepeatedTest;
@@ -34,6 +35,9 @@ import static org.mockito.Mockito.when;
 @Import(TradeExecutor.class)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class TradeExecutorConcurrencyIntegrationTest {
+
+    @MockitoBean
+    private OrderUpdateNotifier orderUpdateNotifier;
 
     @Autowired
     private TradeExecutor tradeExecutor;

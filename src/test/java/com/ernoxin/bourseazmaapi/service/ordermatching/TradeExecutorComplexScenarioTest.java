@@ -6,6 +6,7 @@ import com.ernoxin.bourseazmaapi.repository.TradeRepository;
 import com.ernoxin.bourseazmaapi.repository.TradingOrderRepository;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.service.MarketMakerService;
+import com.ernoxin.bourseazmaapi.service.OrderUpdateNotifier;
 import com.ernoxin.bourseazmaapi.service.WalletLedgerService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,7 +51,8 @@ class TradeExecutorComplexScenarioTest {
                 userRepository,
                 marketMakerService,
                 walletLedgerService,
-                entityManager
+                entityManager,
+                mock(OrderUpdateNotifier.class)
         );
         when(tradeRepository.save(any(Trade.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0, Trade.class));
@@ -89,8 +91,8 @@ class TradeExecutorComplexScenarioTest {
                 created.getUser().getId().equals(1L)
                         && created.getQuantity() == 40L
                         && created.getBuyPrice().compareTo(new BigDecimal("2.00")) == 0));
-        verify(walletLedgerService).recordBalanceChange(eq(buyer), eq(new BigDecimal("-80.00")), anyString());
-        verify(walletLedgerService).recordBalanceChange(eq(seller), eq(new BigDecimal("80.00")), anyString());
+        verify(walletLedgerService).recordBalanceChange(eq(buyer), eq(new BigDecimal("-80.00")), anyString(), eq(WalletTransactionSource.TRADE_BUY));
+        verify(walletLedgerService).recordBalanceChange(eq(seller), eq(new BigDecimal("80.00")), anyString(), eq(WalletTransactionSource.TRADE_SELL));
         verify(tradeRepository).save(any(Trade.class));
     }
 
@@ -130,7 +132,7 @@ class TradeExecutorComplexScenarioTest {
             User ledgerUser = invocation.getArgument(0);
             balancesAtLedgerWrite.add(ledgerUser.getBalance());
             return null;
-        }).when(walletLedgerService).recordBalanceChange(any(), any(), anyString());
+        }).when(walletLedgerService).recordBalanceChange(any(), any(), anyString(), any());
 
         executor.executeTrade(buy, sell, 20L, new BigDecimal("2.00"));
 

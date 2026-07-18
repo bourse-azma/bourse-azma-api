@@ -25,7 +25,8 @@ class TradingSessionLifecycleServiceTest {
     void setUp() {
         orderRepository = mock(TradingOrderRepository.class);
         consumptionRepository = mock(UserLiquidityConsumptionRepository.class);
-        service = new TradingSessionLifecycleService(orderRepository, consumptionRepository);
+        service = new TradingSessionLifecycleService(
+                orderRepository, consumptionRepository, mock(OrderUpdateNotifier.class));
     }
 
     @Test

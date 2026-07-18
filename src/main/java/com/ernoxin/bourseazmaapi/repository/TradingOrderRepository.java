@@ -5,10 +5,7 @@ import com.ernoxin.bourseazmaapi.model.TradingOrder;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -40,6 +37,14 @@ public interface TradingOrderRepository extends JpaRepository<TradingOrder, Long
             Long userId, List<OrderStatus> statuses, Pageable pageable);
 
     List<TradingOrder> findAllByUserIdAndStatusIn(Long userId, List<OrderStatus> statuses);
+
+    @EntityGraph(attributePaths = "user")
+    List<TradingOrder> findAllByStatusInAndRemainingQuantityGreaterThan(
+            List<OrderStatus> statuses, Long remainingQuantity);
+
+    @EntityGraph(attributePaths = "user")
+    List<TradingOrder> findAllByStatusInAndRemainingQuantityGreaterThanAndOrderTimeBefore(
+            List<OrderStatus> statuses, Long remainingQuantity, Instant cutoff);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT o FROM TradingOrder o WHERE o.id = :id AND o.user.id = :userId")

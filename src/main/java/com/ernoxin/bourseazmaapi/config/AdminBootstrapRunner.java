@@ -3,6 +3,7 @@ package com.ernoxin.bourseazmaapi.config;
 import com.ernoxin.bourseazmaapi.model.User;
 import com.ernoxin.bourseazmaapi.model.UserRole;
 import com.ernoxin.bourseazmaapi.model.WalletTransaction;
+import com.ernoxin.bourseazmaapi.model.WalletTransactionSource;
 import com.ernoxin.bourseazmaapi.repository.UserRepository;
 import com.ernoxin.bourseazmaapi.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -105,6 +106,7 @@ public class AdminBootstrapRunner implements ApplicationRunner {
         initialTx.setBalanceAfter(initialBalance);
         initialTx.setDescription("موجودی اولیه به مبلغ " + initialBalance.toPlainString() + " ریال هنگام ایجاد حساب مدیر");
         initialTx.setCreatedAt(Instant.now());
+        initialTx.setSource(WalletTransactionSource.INITIAL_BALANCE.name());
         walletTransactionRepository.save(initialTx);
 
         log.info("Admin bootstrap user created: {} (balance: {})", username, initialBalance);

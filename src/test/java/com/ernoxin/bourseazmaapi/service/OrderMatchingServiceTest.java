@@ -28,7 +28,8 @@ class OrderMatchingServiceTest {
         orderRepository = mock(TradingOrderRepository.class);
         userRepository = mock(UserRepository.class);
         matcher = mock(PrivateBookMatcher.class);
-        service = new OrderMatchingService(orderRepository, userRepository, matcher);
+        service = new OrderMatchingService(
+                orderRepository, userRepository, matcher, mock(OrderUpdateNotifier.class));
     }
 
     @Test
